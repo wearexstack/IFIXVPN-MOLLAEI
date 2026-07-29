@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
 class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = AppDatabase.getDatabase(application)
-    private val repository = VpnRepository(db.vpnDao())
+    private val repository = VpnRepository(db.vpnDao(), application.applicationContext)
 
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
@@ -59,6 +59,9 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val _licenseSuccessMsg = MutableStateFlow<String?>(null)
     val licenseSuccessMsg: StateFlow<String?> = _licenseSuccessMsg.asStateFlow()
 
+    private val _isActivatingLicense = MutableStateFlow(false)
+    val isActivatingLicense: StateFlow<Boolean> = _isActivatingLicense.asStateFlow()
+
     val activeLicense: StateFlow<LicenseEntity?> = repository.activeLicense
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
@@ -88,11 +91,12 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private var timerJob: Job? = null
-    private var speedJob: Job? = null
 
     init {
         viewModelScope.launch {
             repository.ensureInitialData()
+            // Re-validate stored license against server on app start
+            repository.revalidateLicense()
         }
     }
 
@@ -101,7 +105,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         if (current == ConnectionStatus.DISCONNECTED) {
             _connectionStatus.value = ConnectionStatus.CONNECTING
             viewModelScope.launch {
-                delay(1500) // Connection negotiation animation
+                delay(1500)
                 _connectionStatus.value = ConnectionStatus.CONNECTED
                 startVpnTimerAndStats()
             }
@@ -117,8 +121,6 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startVpnTimerAndStats() {
         timerJob?.cancel()
-        speedJob?.cancel()
-
         var duration = 0L
         var totalDown = 0L
         var totalUp = 0L
@@ -127,13 +129,11 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
             while (true) {
                 delay(1000)
                 duration++
-                val downSpeed = (1200..8500).random().toDouble() / 10.0 // KB/s
-                val upSpeed = (400..3200).random().toDouble() / 10.0 // KB/s
+                val downSpeed = (1200..8500).random().toDouble() / 10.0
+                val upSpeed = (400..3200).random().toDouble() / 10.0
                 totalDown += (downSpeed * 1024).toLong()
                 totalUp += (upSpeed * 1024).toLong()
-
                 val serverIp = _selectedServer.value?.ipOrDomain ?: "185.220.101.5"
-
                 _vpnStats.value = VpnStats(
                     durationSeconds = duration,
                     downloadSpeedKbps = downSpeed,
@@ -148,14 +148,12 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun stopVpnTimerAndStats() {
         timerJob?.cancel()
-        speedJob?.cancel()
         _vpnStats.value = VpnStats()
     }
 
     fun selectServer(server: VpnServerEntity) {
         _selectedServer.value = server
         if (_connectionStatus.value == ConnectionStatus.CONNECTED) {
-            // Reconnect to new server seamlessly
             viewModelScope.launch {
                 _connectionStatus.value = ConnectionStatus.CONNECTING
                 delay(1200)
@@ -179,12 +177,14 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     fun activateLicense(key: String) {
         _licenseError.value = null
         _licenseSuccessMsg.value = null
+        _isActivatingLicense.value = true
         viewModelScope.launch {
             val result = repository.activateLicense(key)
+            _isActivatingLicense.value = false
             result.onSuccess {
-                _licenseSuccessMsg.value = "License Activated Successfully! Commercial VIP Unlocked."
+                _licenseSuccessMsg.value = "✅ لایسنس با موفقیت فعال شد!\n${it.planType}"
             }.onFailure {
-                _licenseError.value = it.message ?: "Failed to activate license."
+                _licenseError.value = it.message ?: "فعال‌سازی ناموفق بود."
             }
         }
     }
@@ -199,9 +199,9 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val result = repository.addSubscriptionFromUrl(url)
             result.onSuccess {
-                _licenseSuccessMsg.value = "Subscription imported! New nodes updated."
+                _licenseSuccessMsg.value = "اشتراک با موفقیت اضافه شد."
             }.onFailure {
-                _licenseError.value = it.message ?: "Failed to import subscription."
+                _licenseError.value = it.message ?: "خطا در افزودن اشتراک"
             }
         }
     }

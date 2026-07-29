@@ -1,18 +1,34 @@
 package com.example.repository
 
+import android.annotation.SuppressLint
+import android.content.Context
+import android.provider.Settings
 import com.example.data.LicenseEntity
 import com.example.data.SubscriptionEntity
 import com.example.data.VpnDao
 import com.example.data.VpnServerEntity
+import com.example.network.ActivateLicenseRequest
+import com.example.network.ApiClient
+import com.example.network.CheckLicenseRequest
+import com.example.network.DeactivateLicenseRequest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import java.util.UUID
 
-class VpnRepository(private val dao: VpnDao) {
+class VpnRepository(
+    private val dao: VpnDao,
+    private val appContext: Context
+) {
 
     val allServers: Flow<List<VpnServerEntity>> = dao.getAllServers()
     val activeLicense: Flow<LicenseEntity?> = dao.getActiveLicense()
     val allSubscriptions: Flow<List<SubscriptionEntity>> = dao.getAllSubscriptions()
+
+    @SuppressLint("HardwareIds")
+    private fun deviceId(): String {
+        return Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID)
+            ?: "unknown-device"
+    }
 
     suspend fun ensureInitialData() {
         val existingServers = dao.getAllServers().firstOrNull()
@@ -126,19 +142,8 @@ class VpnRepository(private val dao: VpnDao) {
             dao.insertServers(initialList)
         }
 
-        val existingLicense = dao.getActiveLicense().firstOrNull()
-        if (existingLicense == null) {
-            // Default active license for instant out-of-the-box usability
-            val defaultLicense = LicenseEntity(
-                licenseKey = "IFIX-VIP-PRO-2026",
-                status = "ACTIVE",
-                planType = "VIP 1-Year Commercial Pass",
-                expiryTimestamp = System.currentTimeMillis() + (365L * 24 * 60 * 60 * 1000),
-                maxDevices = 5,
-                activeDevicesCount = 1
-            )
-            dao.setLicense(defaultLicense)
-        }
+        // Do NOT auto-activate a default license anymore.
+        // User must activate via online API (or offline demo fallback).
 
         val existingSubs = dao.getAllSubscriptions().firstOrNull()
         if (existingSubs.isNullOrEmpty()) {
@@ -152,37 +157,147 @@ class VpnRepository(private val dao: VpnDao) {
         }
     }
 
+    /**
+     * Real online license activation.
+     * 1) Calls backend POST /api/license/activate
+     * 2) On network failure, falls back to offline demo keys (if enabled)
+     */
     suspend fun activateLicense(key: String): Result<LicenseEntity> {
         val cleanKey = key.trim().uppercase()
         if (cleanKey.isBlank()) {
-            return Result.failure(Exception("Please enter a valid License Key."))
+            return Result.failure(Exception("لطفاً کلید لایسنس را وارد کنید."))
         }
 
-        // Validate key format or demo keys
+        // Try online first
+        try {
+            val response = ApiClient.licenseApi.activateLicense(
+                ActivateLicenseRequest(
+                    licenseKey = cleanKey,
+                    deviceId = deviceId(),
+                    deviceName = android.os.Build.MODEL
+                )
+            )
+            if (response.success && response.license != null) {
+                val dto = response.license
+                val entity = LicenseEntity(
+                    licenseKey = dto.licenseKey,
+                    status = dto.status,
+                    planType = dto.planType,
+                    expiryTimestamp = dto.expiryTimestamp,
+                    maxDevices = dto.maxDevices,
+                    activeDevicesCount = dto.activeDevicesCount
+                )
+                dao.setLicense(entity)
+                return Result.success(entity)
+            }
+            return Result.failure(Exception(response.error ?: "فعال‌سازی لایسنس ناموفق بود."))
+        } catch (e: Exception) {
+            // Network / server unreachable → optional offline demo
+            if (ApiClient.ALLOW_OFFLINE_DEMO) {
+                return activateOfflineDemo(cleanKey)
+            }
+            return Result.failure(
+                Exception("اتصال به سرور لایسنس برقرار نشد. اینترنت را چک کنید.\n(${e.message})")
+            )
+        }
+    }
+
+    private suspend fun activateOfflineDemo(cleanKey: String): Result<LicenseEntity> {
+        val demoKeys = setOf("IFIX-VIP-PRO-2026", "IFIX-PREMIUM-9999", "IFIX-DEMO-TEST")
         if (cleanKey.contains("EXPIRED") || cleanKey == "INVALID-KEY") {
-            return Result.failure(Exception("License key is invalid or has been revoked."))
+            return Result.failure(Exception("کلید نامعتبر یا باطل شده است."))
+        }
+        if (!demoKeys.contains(cleanKey) && !cleanKey.startsWith("IFIX-")) {
+            return Result.failure(
+                Exception("سرور در دسترس نیست و این کلید دمو نیست. کلید معتبر IFIX وارد کنید.")
+            )
         }
 
-        val newLicense = LicenseEntity(
+        val days = when {
+            cleanKey.contains("DEMO") -> 30L
+            cleanKey.contains("PREMIUM") -> 180L
+            else -> 365L
+        }
+        val plan = when {
+            cleanKey.contains("PRO") -> "VIP Commercial Unlimited (Offline)"
+            cleanKey.contains("PREMIUM") -> "Premium Pass (Offline)"
+            else -> "Demo Trial (Offline)"
+        }
+
+        val entity = LicenseEntity(
             licenseKey = cleanKey,
             status = "ACTIVE",
-            planType = if (cleanKey.contains("PRO")) "VIP Commercial Unlimited" else "Premium Pass",
-            expiryTimestamp = System.currentTimeMillis() + (365L * 24 * 3600 * 1000),
+            planType = plan,
+            expiryTimestamp = System.currentTimeMillis() + days * 24 * 3600 * 1000,
             maxDevices = 5,
             activeDevicesCount = 1
         )
+        dao.setLicense(entity)
+        return Result.success(entity)
+    }
 
-        dao.setLicense(newLicense)
-        return Result.success(newLicense)
+    /** Periodic online validation of the stored license */
+    suspend fun revalidateLicense(): Result<LicenseEntity?> {
+        val current = dao.getActiveLicense().firstOrNull() ?: return Result.success(null)
+        try {
+            val response = ApiClient.licenseApi.checkLicense(
+                CheckLicenseRequest(
+                    licenseKey = current.licenseKey,
+                    deviceId = deviceId()
+                )
+            )
+            if (response.success && response.license != null) {
+                val dto = response.license
+                val entity = LicenseEntity(
+                    licenseKey = dto.licenseKey,
+                    status = dto.status,
+                    planType = dto.planType,
+                    expiryTimestamp = dto.expiryTimestamp,
+                    maxDevices = dto.maxDevices,
+                    activeDevicesCount = dto.activeDevicesCount
+                )
+                dao.setLicense(entity)
+                return Result.success(entity)
+            }
+            // Server says invalid → clear local
+            if (response.status == "INVALID" || response.status == "EXPIRED" || response.status == "DEVICE_NOT_BOUND") {
+                dao.clearLicense()
+                return Result.failure(Exception(response.error ?: "لایسنس دیگر معتبر نیست."))
+            }
+            return Result.failure(Exception(response.error ?: "بررسی لایسنس ناموفق"))
+        } catch (_: Exception) {
+            // Offline: keep local license if not past expiry
+            if (current.expiryTimestamp > System.currentTimeMillis() && current.status == "ACTIVE") {
+                return Result.success(current)
+            }
+            dao.clearLicense()
+            return Result.failure(Exception("لایسنس منقضی شده است."))
+        }
     }
 
     suspend fun deactivateLicense() {
+        val current = dao.getActiveLicense().firstOrNull()
+        if (current != null) {
+            try {
+                ApiClient.licenseApi.deactivateLicense(
+                    DeactivateLicenseRequest(
+                        licenseKey = current.licenseKey,
+                        deviceId = deviceId()
+                    )
+                )
+            } catch (_: Exception) {
+                // ignore network errors on deactivate
+            }
+        }
         dao.clearLicense()
     }
 
     suspend fun addSubscriptionFromUrl(subUrl: String): Result<SubscriptionEntity> {
-        if (!subUrl.startsWith("http://") && !subUrl.startsWith("https://") && !subUrl.startsWith("vless://") && !subUrl.startsWith("vmess://")) {
-            return Result.failure(Exception("Invalid Subscription format or URL."))
+        if (!subUrl.startsWith("http://") && !subUrl.startsWith("https://") &&
+            !subUrl.startsWith("vless://") && !subUrl.startsWith("vmess://") &&
+            !subUrl.startsWith("trojan://") && !subUrl.startsWith("ss://")
+        ) {
+            return Result.failure(Exception("فرمت لینک اشتراک نامعتبر است."))
         }
 
         val subName = when {
@@ -198,10 +313,8 @@ class VpnRepository(private val dao: VpnDao) {
             subUrl = subUrl,
             serverCount = (4..12).random()
         )
-
         dao.insertSubscription(newSub)
 
-        // Parse & inject new server node from subscription link
         val parsedProtocol = when {
             subUrl.startsWith("vless://") -> "VLESS"
             subUrl.startsWith("vmess://") -> "VMess"
@@ -225,7 +338,6 @@ class VpnRepository(private val dao: VpnDao) {
             configRawUrl = subUrl
         )
         dao.insertServers(listOf(newServer))
-
         return Result.success(newSub)
     }
 

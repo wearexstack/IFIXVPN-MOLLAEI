@@ -1,8 +1,8 @@
 /**
  * IFIX VPN REST API – Real License System
  * - Only pre-registered keys can be activated
- * - Device binding (maxDevices)
- * - Expiry check
+ * - Device binding (maxDevices = 1 per license)
+ * - Expiry check (30 days)
  * - Admin endpoint to create new licenses
  */
 
@@ -15,97 +15,41 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const ONE_MONTH_MS = 30 * 24 * 3600 * 1000;
+
+function makeLicense(key) {
+  return {
+    licenseKey: key,
+    status: 'ACTIVE',
+    planType: 'اشتراک یک‌ماهه نامحدود',
+    expiryTimestamp: Date.now() + ONE_MONTH_MS,
+    maxDevices: 1,
+    activeDevicesCount: 0,
+    devices: []
+  };
+}
+
 // ── In-memory store (replace with PostgreSQL in production) ──────────────────
 const database = {
   licenses: {
-    'IFIX-VIP-PRO-2026': {
-      licenseKey: 'IFIX-VIP-PRO-2026',
-      status: 'ACTIVE',
-      planType: 'VIP 1-Year Commercial Pass',
-      expiryTimestamp: Date.now() + 365 * 24 * 3600 * 1000,
-      maxDevices: 5,
-      activeDevicesCount: 0,
-      devices: [] // [{ deviceId, deviceName, activatedAt }]
-    },
-    'IFIX-PREMIUM-9999': {
-      licenseKey: 'IFIX-PREMIUM-9999',
-      status: 'ACTIVE',
-      planType: 'Ultra High-Speed Pass',
-      expiryTimestamp: Date.now() + 180 * 24 * 3600 * 1000,
-      maxDevices: 5,
-      activeDevicesCount: 0,
-      devices: []
-    },
-    'IFIX-DEMO-TEST': {
-      licenseKey: 'IFIX-DEMO-TEST',
-      status: 'ACTIVE',
-      planType: 'Tester Trial License (30 Days)',
-      expiryTimestamp: Date.now() + 30 * 24 * 3600 * 1000,
-      maxDevices: 2,
-      activeDevicesCount: 0,
-      devices: []
-    }
+    'IFIX-A7K2-M9P4': makeLicense('IFIX-A7K2-M9P4'),
+    'IFIX-B3N8-Q1R6': makeLicense('IFIX-B3N8-Q1R6'),
+    'IFIX-C5W2-T4Y9': makeLicense('IFIX-C5W2-T4Y9'),
+    'IFIX-D8H1-U6V3': makeLicense('IFIX-D8H1-U6V3'),
+    'IFIX-E2J7-X9Z4': makeLicense('IFIX-E2J7-X9Z4'),
+    'IFIX-F4L0-A1B8': makeLicense('IFIX-F4L0-A1B8'),
+    'IFIX-G6M3-C5D2': makeLicense('IFIX-G6M3-C5D2'),
+    'IFIX-H9P5-E7F1': makeLicense('IFIX-H9P5-E7F1'),
+    'IFIX-J1R8-G3H6': makeLicense('IFIX-J1R8-G3H6'),
+    'IFIX-K3T4-J0L9': makeLicense('IFIX-K3T4-J0L9')
   },
-  servers: [
-    {
-      id: 'srv_de_1',
-      name: 'Frankfurt VIP 01 - Fast',
-      countryCode: 'DE',
-      countryName: 'Germany',
-      ipOrDomain: 'de1.ifixvpn.net',
-      port: 443,
-      protocol: 'VLESS',
-      latencyMs: 38,
-      status: 'ONLINE',
-      userCapacityPercent: 32,
-      flagEmoji: '🇩🇪'
-    },
-    {
-      id: 'srv_nl_1',
-      name: 'Amsterdam Streaming 01',
-      countryCode: 'NL',
-      countryName: 'Netherlands',
-      ipOrDomain: 'nl1.ifixvpn.net',
-      port: 8443,
-      protocol: 'VMess',
-      latencyMs: 45,
-      status: 'ONLINE',
-      userCapacityPercent: 58,
-      flagEmoji: '🇳🇱'
-    },
-    {
-      id: 'srv_fi_1',
-      name: 'Helsinki Ultra Secure',
-      countryCode: 'FI',
-      countryName: 'Finland',
-      ipOrDomain: 'fi1.ifixvpn.net',
-      port: 2083,
-      protocol: 'Trojan',
-      latencyMs: 52,
-      status: 'ONLINE',
-      userCapacityPercent: 25,
-      flagEmoji: '🇫🇮'
-    },
-    {
-      id: 'srv_us_1',
-      name: 'New York Gaming 01',
-      countryCode: 'US',
-      countryName: 'United States',
-      ipOrDomain: 'us1.ifixvpn.net',
-      port: 443,
-      protocol: 'Xray',
-      latencyMs: 110,
-      status: 'ONLINE',
-      userCapacityPercent: 70,
-      flagEmoji: '🇺🇸'
-    }
-  ],
+  servers: [],
   remoteConfig: {
-    announcementMessage: '⚡ Welcome to IFIX VPN! High speed commercial VIP servers are active with zero logging.',
+    announcementMessage: 'به IFIX VPN خوش آمدید. سرورهای تجاری با سرعت بالا فعال هستند.',
     isForceUpdateRequired: false,
     latestVersionName: '1.0.0',
     latestVersionCode: 1,
-    releaseNotes: 'Initial Release of IFIX VPN Client with real online license system.',
+    releaseNotes: 'نسخه اولیه کلاینت IFIX VPN با سیستم لایسنس آنلاین.',
     telegramChannel: 'https://t.me/ifixvpn_official',
     supportUrl: 'https://ifixvpn.com/support'
   }
@@ -135,7 +79,7 @@ app.post('/api/license/activate', (req, res) => {
   if (!licenseKey || !deviceId) {
     return res.status(400).json({
       success: false,
-      error: 'licenseKey and deviceId are required.'
+      error: 'کلید لایسنس و شناسه دستگاه الزامی است.'
     });
   }
 
@@ -145,14 +89,14 @@ app.post('/api/license/activate', (req, res) => {
   if (!lic) {
     return res.status(404).json({
       success: false,
-      error: 'License key not found. Please purchase a valid IFIX VPN license.'
+      error: 'کلید لایسنس یافت نشد. لطفاً یک لایسنس معتبر IFIX VPN تهیه کنید.'
     });
   }
 
   if (lic.status === 'DEACTIVATED') {
     return res.status(403).json({
       success: false,
-      error: 'This license has been deactivated by the administrator.'
+      error: 'این لایسنس توسط مدیر غیرفعال شده است.'
     });
   }
 
@@ -160,7 +104,7 @@ app.post('/api/license/activate', (req, res) => {
     lic.status = 'EXPIRED';
     return res.status(403).json({
       success: false,
-      error: 'License key has expired. Please renew your subscription.'
+      error: 'لایسنس منقضی شده است. لطفاً اشتراک خود را تمدید کنید.'
     });
   }
 
@@ -170,11 +114,11 @@ app.post('/api/license/activate', (req, res) => {
     return res.json({ success: true, license: publicLicense(lic) });
   }
 
-  // Max devices check
+  // Max devices check (1 user / 1 device)
   if (lic.devices.length >= lic.maxDevices) {
     return res.status(403).json({
       success: false,
-      error: `Device limit reached (${lic.maxDevices}). Deactivate another device first.`
+      error: `محدودیت دستگاه پر شده است (${lic.maxDevices}). ابتدا دستگاه قبلی را غیرفعال کنید.`
     });
   }
 
@@ -192,33 +136,32 @@ app.post('/api/license/activate', (req, res) => {
 app.post('/api/license/check', (req, res) => {
   const { licenseKey, deviceId } = req.body || {};
   if (!licenseKey) {
-    return res.status(400).json({ success: false, status: 'INVALID', error: 'licenseKey required' });
+    return res.status(400).json({ success: false, status: 'INVALID', error: 'کلید لایسنس الزامی است' });
   }
 
   const cleanKey = String(licenseKey).trim().toUpperCase();
   const lic = database.licenses[cleanKey];
 
   if (!lic) {
-    return res.status(404).json({ success: false, status: 'INVALID', error: 'License not found' });
+    return res.status(404).json({ success: false, status: 'INVALID', error: 'لایسنس یافت نشد' });
   }
 
   if (isExpired(lic)) {
     lic.status = 'EXPIRED';
-    return res.status(403).json({ success: false, status: 'EXPIRED', error: 'License expired', license: publicLicense(lic) });
+    return res.status(403).json({ success: false, status: 'EXPIRED', error: 'لایسنس منقضی شده', license: publicLicense(lic) });
   }
 
   if (lic.status !== 'ACTIVE') {
-    return res.status(403).json({ success: false, status: lic.status, error: 'License not active', license: publicLicense(lic) });
+    return res.status(403).json({ success: false, status: lic.status, error: 'لایسنس فعال نیست', license: publicLicense(lic) });
   }
 
-  // Optional: verify device is still bound
   if (deviceId) {
     const bound = lic.devices.some((d) => d.deviceId === deviceId);
     if (!bound) {
       return res.status(403).json({
         success: false,
         status: 'DEVICE_NOT_BOUND',
-        error: 'This device is not authorized for this license.'
+        error: 'این دستگاه برای این لایسنس مجاز نیست.'
       });
     }
   }
@@ -230,26 +173,25 @@ app.post('/api/license/check', (req, res) => {
 app.post('/api/license/deactivate', (req, res) => {
   const { licenseKey, deviceId } = req.body || {};
   if (!licenseKey) {
-    return res.status(400).json({ success: false, error: 'licenseKey required' });
+    return res.status(400).json({ success: false, error: 'کلید لایسنس الزامی است' });
   }
 
   const cleanKey = String(licenseKey).trim().toUpperCase();
   const lic = database.licenses[cleanKey];
   if (!lic) {
-    return res.json({ success: true, message: 'License not found (already clear).' });
+    return res.json({ success: true, message: 'لایسنس یافت نشد.' });
   }
 
   if (deviceId) {
     lic.devices = lic.devices.filter((d) => d.deviceId !== deviceId);
     lic.activeDevicesCount = lic.devices.length;
   } else {
-    // Full deactivate if no deviceId
     lic.status = 'DEACTIVATED';
     lic.devices = [];
     lic.activeDevicesCount = 0;
   }
 
-  return res.json({ success: true, message: 'License deactivated on this device.' });
+  return res.json({ success: true, message: 'لایسنس روی این دستگاه غیرفعال شد.' });
 });
 
 // ── 4. Admin: Create new license key ─────────────────────────────────────────
@@ -260,9 +202,9 @@ app.post('/api/admin/license/create', (req, res) => {
   }
 
   const {
-    planType = 'Commercial VIP Pass',
-    daysValid = 365,
-    maxDevices = 5,
+    planType = 'اشتراک یک‌ماهه نامحدود',
+    daysValid = 30,
+    maxDevices = 1,
     customKey
   } = req.body || {};
 
@@ -316,6 +258,6 @@ app.get('/health', (_req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 IFIX VPN Backend running on port ${PORT}`);
-  console.log(`   Demo keys: IFIX-VIP-PRO-2026 | IFIX-PREMIUM-9999 | IFIX-DEMO-TEST`);
+  console.log(`   Licenses loaded: ${Object.keys(database.licenses).length}`);
   console.log(`   Admin secret header: x-admin-secret`);
 });

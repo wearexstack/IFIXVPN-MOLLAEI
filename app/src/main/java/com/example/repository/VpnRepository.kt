@@ -18,7 +18,6 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 class VpnRepository(
@@ -35,6 +34,20 @@ class VpnRepository(
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
+    /** 10 official one-month single-device keys (offline fallback when API unreachable). */
+    private val officialKeys = setOf(
+        "IFIX-A7K2-M9P4",
+        "IFIX-B3N8-Q1R6",
+        "IFIX-C5W2-T4Y9",
+        "IFIX-D8H1-U6V3",
+        "IFIX-E2J7-X9Z4",
+        "IFIX-F4L0-A1B8",
+        "IFIX-G6M3-C5D2",
+        "IFIX-H9P5-E7F1",
+        "IFIX-J1R8-G3H6",
+        "IFIX-K3T4-J0L9"
+    )
+
     @SuppressLint("HardwareIds")
     private fun deviceId(): String {
         return Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID)
@@ -42,12 +55,11 @@ class VpnRepository(
     }
 
     suspend fun ensureInitialData() {
-        // Default subscription = your GitHub raw sub (edit that file → servers update)
         val existingSubs = dao.getAllSubscriptions().firstOrNull()
         if (existingSubs.isNullOrEmpty()) {
             val defaultSub = SubscriptionEntity(
                 id = "sub_xstack_main",
-                name = "XStack Main Subscription",
+                name = "اشتراک اصلی XStack",
                 subUrl = SubscriptionParser.DEFAULT_SUB_URL,
                 serverCount = 0,
                 isAutoUpdateEnabled = true
@@ -55,22 +67,20 @@ class VpnRepository(
             dao.insertSubscription(defaultSub)
         }
 
-        // Always try to refresh servers from subscription on startup
         val sub = dao.getAllSubscriptions().firstOrNull()?.firstOrNull()
             ?: return
 
         val result = refreshServersFromSubscription(sub.subUrl)
         if (result.isFailure) {
-            // Fallback placeholder if network fails and DB empty
             val existingServers = dao.getAllServers().firstOrNull()
             if (existingServers.isNullOrEmpty()) {
                 dao.insertServers(
                     listOf(
                         VpnServerEntity(
                             id = "fallback_1",
-                            name = "Offline placeholder – open Subscriptions & Refresh",
+                            name = "آفلاین – اشتراک را رفرش کنید",
                             countryCode = "UN",
-                            countryName = "International",
+                            countryName = "بین‌المللی",
                             ipOrDomain = "localhost",
                             port = 443,
                             protocol = "VLESS",
@@ -87,7 +97,6 @@ class VpnRepository(
 
     /**
      * Download subscription URL, parse nodes, replace all servers in DB.
-     * Call this after you edit https://raw.githubusercontent.com/wearexstack/xstack/main/sub
      */
     suspend fun refreshServersFromSubscription(subUrl: String = SubscriptionParser.DEFAULT_SUB_URL): Result<Int> {
         return withContext(Dispatchers.IO) {
@@ -119,7 +128,6 @@ class VpnRepository(
                 dao.clearAllServers()
                 dao.insertServers(servers)
 
-                // Update subscription metadata
                 val subs = dao.getAllSubscriptions().firstOrNull().orEmpty()
                 val matching = subs.find { it.subUrl == subUrl } ?: subs.firstOrNull()
                 if (matching != null) {
@@ -133,7 +141,7 @@ class VpnRepository(
                     dao.insertSubscription(
                         SubscriptionEntity(
                             id = "sub_xstack_main",
-                            name = "XStack Main Subscription",
+                            name = "اشتراک اصلی XStack",
                             subUrl = subUrl,
                             serverCount = servers.size,
                             isAutoUpdateEnabled = true
@@ -178,7 +186,7 @@ class VpnRepository(
             return Result.failure(Exception(response.error ?: "فعال‌سازی لایسنس ناموفق بود."))
         } catch (e: Exception) {
             if (ApiClient.ALLOW_OFFLINE_DEMO) {
-                return activateOfflineDemo(cleanKey)
+                return activateOfflineOfficial(cleanKey)
             }
             return Result.failure(
                 Exception("اتصال به سرور لایسنس برقرار نشد. اینترنت را چک کنید.\n(${e.message})")
@@ -186,34 +194,19 @@ class VpnRepository(
         }
     }
 
-    private suspend fun activateOfflineDemo(cleanKey: String): Result<LicenseEntity> {
-        val demoKeys = setOf("IFIX-VIP-PRO-2026", "IFIX-PREMIUM-9999", "IFIX-DEMO-TEST")
-        if (cleanKey.contains("EXPIRED") || cleanKey == "INVALID-KEY") {
-            return Result.failure(Exception("کلید نامعتبر یا باطل شده است."))
-        }
-        if (!demoKeys.contains(cleanKey) && !cleanKey.startsWith("IFIX-")) {
+    private suspend fun activateOfflineOfficial(cleanKey: String): Result<LicenseEntity> {
+        if (!officialKeys.contains(cleanKey)) {
             return Result.failure(
-                Exception("سرور در دسترس نیست و این کلید دمو نیست. کلید معتبر IFIX وارد کنید.")
+                Exception("سرور در دسترس نیست و این کلید معتبر نیست.")
             )
-        }
-
-        val days = when {
-            cleanKey.contains("DEMO") -> 30L
-            cleanKey.contains("PREMIUM") -> 180L
-            else -> 365L
-        }
-        val plan = when {
-            cleanKey.contains("PRO") -> "VIP Commercial Unlimited (Offline)"
-            cleanKey.contains("PREMIUM") -> "Premium Pass (Offline)"
-            else -> "Demo Trial (Offline)"
         }
 
         val entity = LicenseEntity(
             licenseKey = cleanKey,
             status = "ACTIVE",
-            planType = plan,
-            expiryTimestamp = System.currentTimeMillis() + days * 24 * 3600 * 1000,
-            maxDevices = 5,
+            planType = "اشتراک یک‌ماهه نامحدود",
+            expiryTimestamp = System.currentTimeMillis() + 30L * 24 * 3600 * 1000,
+            maxDevices = 1,
             activeDevicesCount = 1
         )
         dao.setLicense(entity)
@@ -270,63 +263,6 @@ class VpnRepository(
             }
         }
         dao.clearLicense()
-    }
-
-    /**
-     * Add a new subscription URL and immediately fetch/parse its nodes.
-     */
-    suspend fun addSubscriptionFromUrl(subUrl: String): Result<SubscriptionEntity> {
-        val url = subUrl.trim()
-        if (!url.startsWith("http://") && !url.startsWith("https://") &&
-            !url.startsWith("vless://") && !url.startsWith("vmess://") &&
-            !url.startsWith("trojan://") && !url.startsWith("ss://") &&
-            !url.startsWith("hysteria2://") && !url.startsWith("hy2://")
-        ) {
-            return Result.failure(Exception("فرمت لینک اشتراک نامعتبر است."))
-        }
-
-        // Single-node link (not a subscription list URL)
-        if (!url.startsWith("http://") && !url.startsWith("https://")) {
-            val servers = SubscriptionParser.parseSubscriptionBody(url)
-            if (servers.isNotEmpty()) {
-                dao.insertServers(servers)
-            }
-            val sub = SubscriptionEntity(
-                id = UUID.randomUUID().toString(),
-                name = "Single Node",
-                subUrl = url,
-                serverCount = servers.size
-            )
-            dao.insertSubscription(sub)
-            return Result.success(sub)
-        }
-
-        val refresh = refreshServersFromSubscription(url)
-        if (refresh.isFailure) {
-            // Still save the sub even if fetch failed once
-            val sub = SubscriptionEntity(
-                id = UUID.randomUUID().toString(),
-                name = "Custom Subscription",
-                subUrl = url,
-                serverCount = 0
-            )
-            dao.insertSubscription(sub)
-            return Result.failure(refresh.exceptionOrNull() ?: Exception("خطا در دریافت ساب"))
-        }
-
-        val count = refresh.getOrDefault(0)
-        val sub = SubscriptionEntity(
-            id = UUID.randomUUID().toString(),
-            name = "Subscription",
-            subUrl = url,
-            serverCount = count
-        )
-        dao.insertSubscription(sub)
-        return Result.success(sub)
-    }
-
-    suspend fun deleteSubscription(id: String) {
-        dao.deleteSubscription(id)
     }
 
     suspend fun testServerLatency(server: VpnServerEntity): VpnServerEntity {

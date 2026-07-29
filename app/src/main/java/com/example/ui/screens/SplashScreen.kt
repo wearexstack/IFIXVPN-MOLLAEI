@@ -103,7 +103,7 @@ fun SplashScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.Shield,
-                    contentDescription = "IFIX VPN Shield",
+                    contentDescription = "IFIX VPN",
                     tint = CyanPrimary,
                     modifier = Modifier.size(72.dp)
                 )
@@ -128,7 +128,7 @@ fun SplashScreen(
                     .padding(horizontal = 16.dp, vertical = 6.dp)
             ) {
                 Text(
-                    text = "Commercial VIP Edition",
+                    text = "نسخه تجاری VIP",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant

@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class VpnViewModel(application: Application) : AndroidViewModel(application) {
@@ -100,11 +101,41 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private var timerJob: Job? = null
+    private var autoRefreshJob: Job? = null
+
+    /** Interval for automatic subscription refresh while app is in foreground (30 minutes). */
+    private companion object {
+        const val AUTO_REFRESH_INTERVAL_MS = 30 * 60 * 1000L
+    }
 
     init {
         viewModelScope.launch {
             repository.ensureInitialData()
             repository.revalidateLicense()
+        }
+        startAutoRefresh()
+    }
+
+    /**
+     * Periodically re-downloads the subscription and updates the server list.
+     * Runs only while the ViewModel (app process) is alive.
+     * Edit https://raw.githubusercontent.com/wearexstack/xstack/main/sub → servers update on next cycle.
+     */
+    private fun startAutoRefresh() {
+        autoRefreshJob?.cancel()
+        autoRefreshJob = viewModelScope.launch {
+            // Wait a bit after startup so initial load finishes first
+            delay(60_000L)
+            while (isActive) {
+                try {
+                    val target = allSubscriptions.value.firstOrNull()?.subUrl
+                        ?: SubscriptionParser.DEFAULT_SUB_URL
+                    repository.refreshServersFromSubscription(target)
+                } catch (_: Exception) {
+                    // Silent fail – next cycle will retry
+                }
+                delay(AUTO_REFRESH_INTERVAL_MS)
+            }
         }
     }
 
@@ -266,5 +297,11 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     fun clearMessages() {
         _licenseError.value = null
         _licenseSuccessMsg.value = null
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        autoRefreshJob?.cancel()
+        timerJob?.cancel()
     }
 }

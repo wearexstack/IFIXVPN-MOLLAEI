@@ -31,16 +31,8 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Grant Execute Permission for Gradle Wrapper
-        run: chmod +x gradlew || true
-
       - name: Build Debug APK
-        run: |
-          if [ -f ./gradlew ]; then
-            ./gradlew :app:assembleDebug --stacktrace --no-daemon
-          else
-            gradle :app:assembleDebug --stacktrace --no-daemon
-          fi
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
@@ -50,12 +42,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Build Release AAB (Google Play Bundle)
-        run: |
-          if [ -f ./gradlew ]; then
-            ./gradlew :app:bundleRelease --stacktrace --no-daemon || true
-          else
-            gradle :app:bundleRelease --stacktrace --no-daemon || true
-          fi
+        run: gradle :app:bundleRelease --stacktrace --no-daemon || true
         continue-on-error: true
 
       - name: Upload Release AAB Artifact

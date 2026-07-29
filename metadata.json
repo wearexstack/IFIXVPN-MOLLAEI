@@ -1,0 +1,6 @@
+{
+  "name": "IFIX VPN",
+  "description": "IFIX VPN - Professional Commercial VPN Client with Server Management, License System, and Subscription Support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

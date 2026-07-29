@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Shield Outline -->
+    <path
+        android:pathData="M54,22 C64,26 74,25 78,27 C78,48 70,68 54,78 C38,68 30,48 30,27 C34,25 44,26 54,22 Z"
+        android:strokeWidth="4"
+        android:strokeColor="#00F5D4">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="54"
+                android:startY="22"
+                android:endX="54"
+                android:endY="78"
+                android:type="linear">
+                <item android:color="#1E293B" android:offset="0.0" />
+                <item android:color="#0F172A" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Keyhole / Lock bolt emblem -->
+    <path
+        android:fillColor="#00F5D4"
+        android:pathData="M54,36 C50.7,36 48,38.7 48,42 C48,44.4 49.4,46.4 51.5,47.3 L50,58 L58,58 L56.5,47.3 C58.6,46.4 60,44.4 60,42 C60,38.7 57.3,36 54,36 Z" />
+</vector>

@@ -2,7 +2,6 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.SystemUpdate
@@ -37,13 +36,13 @@ fun UpdateDialog(
         icon = {
             Icon(
                 imageVector = Icons.Default.SystemUpdate,
-                contentDescription = "Update Available",
+                contentDescription = null,
                 tint = CyanPrimary
             )
         },
         title = {
             Text(
-                text = "New IFIX VPN Update Available",
+                text = "به‌روزرسانی جدید IFIX VPN",
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp
             )
@@ -51,7 +50,7 @@ fun UpdateDialog(
         text = {
             Column {
                 Text(
-                    text = "Version ${remoteConfig.latestVersionName} is now ready to download.",
+                    text = "نسخه ${remoteConfig.latestVersionName} آماده دانلود است.",
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onBackground
@@ -65,7 +64,7 @@ fun UpdateDialog(
                 if (remoteConfig.isForceUpdateRequired) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = "⚠️ This update is MANDATORY to continue using commercial servers.",
+                        text = "این به‌روزرسانی برای ادامه استفاده اجباری است.",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.error
@@ -78,13 +77,13 @@ fun UpdateDialog(
                 onClick = onDownloadUpdate,
                 colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary, contentColor = Color(0xFF0F172A))
             ) {
-                Text("DOWNLOAD & INSTALL", fontWeight = FontWeight.Bold)
+                Text("دانلود و نصب", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
             if (!remoteConfig.isForceUpdateRequired) {
                 TextButton(onClick = onDismiss) {
-                    Text("LATER")
+                    Text("بعداً")
                 }
             }
         }

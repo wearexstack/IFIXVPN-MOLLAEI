@@ -15,18 +15,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.LockReset
-import androidx.compose.material.icons.filled.CallSplit
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SystemUpdate
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -82,7 +79,7 @@ fun SettingsScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Settings & Account",
+                        text = "تنظیمات و حساب",
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
                         color = MaterialTheme.colorScheme.onBackground
@@ -92,7 +89,7 @@ fun SettingsScreen(
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
+                            contentDescription = "بازگشت"
                         )
                     }
                 },
@@ -112,7 +109,6 @@ fun SettingsScreen(
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // License Details Card
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 shape = RoundedCornerShape(16.dp),
@@ -133,14 +129,17 @@ fun SettingsScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "License Information",
+                                text = "اطلاعات لایسنس",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
                                 color = MaterialTheme.colorScheme.onBackground
                             )
                         }
                         Text(
-                            text = activeLicense?.status ?: "INACTIVE",
+                            text = when (activeLicense?.status) {
+                                "ACTIVE" -> "فعال"
+                                else -> "غیرفعال"
+                            },
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp,
                             color = if (activeLicense?.status == "ACTIVE") Color(0xFF10B981) else VpnDisconnectedRed
@@ -150,7 +149,7 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
-                        text = "Key: ${activeLicense?.licenseKey ?: "N/A"}",
+                        text = "کلید: ${activeLicense?.licenseKey ?: "—"}",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onBackground
@@ -159,7 +158,7 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
-                        text = "Plan: ${activeLicense?.planType ?: "Commercial Pass"}",
+                        text = "پلن: ${activeLicense?.planType ?: "—"}",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -167,7 +166,7 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
-                        text = "Expires: ${if (activeLicense != null) formatExpiryDate(activeLicense.expiryTimestamp) else "N/A"}",
+                        text = "انقضا: ${if (activeLicense != null) formatExpiryDateFa(activeLicense.expiryTimestamp) else "—"}",
                         fontSize = 12.sp,
                         color = CyanSecondary
                     )
@@ -183,7 +182,7 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "Allowed Devices: ${activeLicense?.activeDevicesCount ?: 1} / ${activeLicense?.maxDevices ?: 5} Active",
+                            text = "دستگاه مجاز: ${activeLicense?.activeDevicesCount ?: 0} / ${activeLicense?.maxDevices ?: 1}",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -202,21 +201,19 @@ fun SettingsScreen(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Deactivate License Key", fontSize = 13.sp)
+                        Text("غیرفعال‌سازی لایسنس", fontSize = 13.sp)
                     }
                 }
             }
 
-            // App Preferences
             Text(
-                text = "Preferences",
+                text = "ترجیحات",
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp,
                 color = CyanPrimary,
                 modifier = Modifier.padding(top = 8.dp)
             )
 
-            // Dark Mode Switch Card
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 shape = RoundedCornerShape(14.dp),
@@ -239,13 +236,13 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "Dark Mode Theme",
+                                text = "حالت تاریک",
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 14.sp,
                                 color = MaterialTheme.colorScheme.onBackground
                             )
                             Text(
-                                text = "Sleek dark navy & cyan contrast UI",
+                                text = "تم تیره با رنگ فیروزه‌ای",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -259,7 +256,6 @@ fun SettingsScreen(
                 }
             }
 
-            // Kill Switch Card
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 shape = RoundedCornerShape(14.dp),
@@ -282,13 +278,13 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "Always-on VPN Kill Switch",
+                                text = "Kill Switch همیشه روشن",
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 14.sp,
                                 color = MaterialTheme.colorScheme.onBackground
                             )
                             Text(
-                                text = "Block non-VPN traffic if tunnel drops",
+                                text = "مسدود کردن ترافیک در صورت قطع تونل",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -302,7 +298,6 @@ fun SettingsScreen(
                 }
             }
 
-            // Push Notifications Card
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 shape = RoundedCornerShape(14.dp),
@@ -325,13 +320,13 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "Firebase Push Notifications",
+                                text = "اعلان‌های پوش",
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 14.sp,
                                 color = MaterialTheme.colorScheme.onBackground
                             )
                             Text(
-                                text = "Server updates, announcements & alerts",
+                                text = "به‌روزرسانی سرور و پیام‌های مهم",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -345,7 +340,6 @@ fun SettingsScreen(
                 }
             }
 
-            // Online Update Action Card
             Card(
                 onClick = onCheckForUpdates,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -369,27 +363,26 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "Check for Online Updates",
+                                text = "بررسی به‌روزرسانی",
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 14.sp,
                                 color = MaterialTheme.colorScheme.onBackground
                             )
                             Text(
-                                text = "Current Version 1.0.0 (Build 1)",
+                                text = "نسخه فعلی ۱.۰.۰",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                     Icon(
-                        imageVector = Icons.Default.ChevronRight,
+                        imageVector = Icons.Default.ChevronLeft,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
-            // Support Channel Card
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 shape = RoundedCornerShape(14.dp),
@@ -399,30 +392,27 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Send,
-                            contentDescription = null,
-                            tint = CyanPrimary,
-                            modifier = Modifier.size(20.dp)
+                    Icon(
+                        imageVector = Icons.Default.Send,
+                        contentDescription = null,
+                        tint = CyanPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "پشتیبانی رسمی",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onBackground
                         )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "Official Support Channel",
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                            Text(
-                                text = remoteConfig.telegramChannel,
-                                fontSize = 11.sp,
-                                color = CyanSecondary
-                            )
-                        }
+                        Text(
+                            text = remoteConfig.telegramChannel,
+                            fontSize = 11.sp,
+                            color = CyanSecondary
+                        )
                     }
                 }
             }
@@ -432,7 +422,7 @@ fun SettingsScreen(
     }
 }
 
-fun formatExpiryDate(timestamp: Long): String {
-    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+fun formatExpiryDateFa(timestamp: Long): String {
+    val sdf = SimpleDateFormat("yyyy/MM/dd", Locale("fa"))
     return sdf.format(Date(timestamp))
 }

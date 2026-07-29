@@ -27,7 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Campaign
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Download
@@ -67,7 +67,6 @@ import com.example.data.VpnServerEntity
 import com.example.models.ConnectionStatus
 import com.example.models.RemoteConfig
 import com.example.models.VpnStats
-import com.example.ui.theme.CyanGlow
 import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.CyanSecondary
 import com.example.ui.theme.VpnConnectedGreen
@@ -154,28 +153,28 @@ fun HomeScreen(
                     IconButton(onClick = onNavigateSubscriptions) {
                         Icon(
                             imageVector = Icons.Default.RssFeed,
-                            contentDescription = "Subscriptions",
+                            contentDescription = "اشتراک",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     IconButton(onClick = onNavigateServerList) {
                         Icon(
                             imageVector = Icons.Default.Dns,
-                            contentDescription = "Servers",
+                            contentDescription = "سرورها",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     IconButton(onClick = onToggleTheme) {
                         Icon(
                             imageVector = if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
-                            contentDescription = "Theme",
+                            contentDescription = "تم",
                             tint = CyanPrimary
                         )
                     }
                     IconButton(onClick = onNavigateSettings) {
                         Icon(
                             imageVector = Icons.Default.Settings,
-                            contentDescription = "Settings",
+                            contentDescription = "تنظیمات",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -196,7 +195,6 @@ fun HomeScreen(
                 .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Announcement banner
             if (remoteConfig.announcementMessage.isNotBlank()) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -211,7 +209,7 @@ fun HomeScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Campaign,
-                            contentDescription = "Announcement",
+                            contentDescription = null,
                             tint = CyanPrimary,
                             modifier = Modifier.size(24.dp)
                         )
@@ -228,30 +226,27 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Connection Status Label
             Text(
                 text = when (connectionStatus) {
-                    ConnectionStatus.CONNECTED -> "SECURELY CONNECTED"
-                    ConnectionStatus.CONNECTING -> "ESTABLISHING SECURE TUNNEL..."
-                    ConnectionStatus.DISCONNECTING -> "DISCONNECTING..."
-                    ConnectionStatus.DISCONNECTED -> "NOT CONNECTED"
+                    ConnectionStatus.CONNECTED -> "متصل و امن"
+                    ConnectionStatus.CONNECTING -> "در حال برقراری تونل امن..."
+                    ConnectionStatus.DISCONNECTING -> "در حال قطع اتصال..."
+                    ConnectionStatus.DISCONNECTED -> "متصل نیست"
                 },
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 1.5.sp,
+                letterSpacing = 1.sp,
                 color = buttonColor
             )
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // Main Power Action Button
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .size(200.dp)
                     .testTag("connect_vpn_button")
             ) {
-                // Outer Pulsing Glow Circle
                 Box(
                     modifier = Modifier
                         .size(190.dp)
@@ -261,7 +256,6 @@ fun HomeScreen(
                         .border(2.dp, buttonColor.copy(alpha = 0.4f), CircleShape)
                 )
 
-                // Inner Main Action Button
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
@@ -281,12 +275,12 @@ fun HomeScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
                             imageVector = Icons.Default.PowerSettingsNew,
-                            contentDescription = "Connect Toggle",
+                            contentDescription = "اتصال",
                             tint = Color.White,
                             modifier = Modifier.size(56.dp)
                         )
                         Text(
-                            text = if (connectionStatus == ConnectionStatus.CONNECTED) "STOP" else "START",
+                            text = if (connectionStatus == ConnectionStatus.CONNECTED) "قطع" else "اتصال",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Black,
                             color = Color.White,
@@ -299,7 +293,6 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // Server Selector Bar Card
             Card(
                 onClick = onNavigateServerList,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -323,23 +316,21 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.width(14.dp))
                         Column {
                             Text(
-                                text = selectedServer?.name ?: "Select Server Location",
+                                text = selectedServer?.name ?: "انتخاب سرور",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp,
                                 color = MaterialTheme.colorScheme.onBackground
                             )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "${selectedServer?.protocol ?: "VLESS"} • ${selectedServer?.latencyMs ?: 0}ms",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            Text(
+                                text = "${selectedServer?.protocol ?: "VLESS"} • ${selectedServer?.latencyMs ?: 0}ms",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                     Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = "Select Server",
+                        imageVector = Icons.Default.ChevronLeft,
+                        contentDescription = "انتخاب سرور",
                         tint = CyanPrimary
                     )
                 }
@@ -347,23 +338,20 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Live Connection Stats Dashboard Grid
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Duration Tile
                 StatTile(
                     icon = Icons.Default.Timer,
-                    label = "DURATION",
+                    label = "مدت اتصال",
                     value = formatDuration(vpnStats.durationSeconds),
                     accentColor = CyanPrimary,
                     modifier = Modifier.weight(1f)
                 )
-                // Ping Tile
                 StatTile(
                     icon = Icons.Default.Speed,
-                    label = "PING",
+                    label = "پینگ",
                     value = "${selectedServer?.latencyMs ?: 0} ms",
                     accentColor = VpnConnectedGreen,
                     modifier = Modifier.weight(1f)
@@ -376,18 +364,16 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Download Speed Tile
                 StatTile(
                     icon = Icons.Default.Download,
-                    label = "DOWNLOAD",
+                    label = "دانلود",
                     value = String.format("%.1f KB/s", vpnStats.downloadSpeedKbps),
                     accentColor = CyanSecondary,
                     modifier = Modifier.weight(1f)
                 )
-                // Upload Speed Tile
                 StatTile(
                     icon = Icons.Default.Upload,
-                    label = "UPLOAD",
+                    label = "آپلود",
                     value = String.format("%.1f KB/s", vpnStats.uploadSpeedKbps),
                     accentColor = VpnConnectingYellow,
                     modifier = Modifier.weight(1f)
@@ -396,7 +382,6 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // IP Address Tile
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 shape = RoundedCornerShape(14.dp),
@@ -412,13 +397,13 @@ fun HomeScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.Public,
-                            contentDescription = "IP",
+                            contentDescription = null,
                             tint = CyanPrimary,
                             modifier = Modifier.size(22.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "SECURED IP ADDRESS",
+                            text = "آدرس IP امن",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant

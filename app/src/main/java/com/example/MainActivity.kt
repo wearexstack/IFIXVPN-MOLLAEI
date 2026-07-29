@@ -8,7 +8,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -114,8 +113,6 @@ class MainActivity : ComponentActivity() {
                                 subscriptions = allSubscriptions,
                                 isRefreshing = isRefreshingSub,
                                 statusMessage = licenseSuccessMsg ?: licenseError,
-                                onAddSubscription = { url -> viewModel.addSubscription(url) },
-                                onDeleteSubscription = { id -> viewModel.deleteSubscription(id) },
                                 onRefreshSubscription = { viewModel.refreshSubscription() },
                                 onNavigateBack = { navController.popBackStack() }
                             )
@@ -146,7 +143,7 @@ class MainActivity : ComponentActivity() {
                             onDownloadUpdate = {
                                 Toast.makeText(
                                     this@MainActivity,
-                                    "Downloading IFIX VPN v${remoteConfig.latestVersionName}...",
+                                    "در حال دانلود نسخه ${remoteConfig.latestVersionName}...",
                                     Toast.LENGTH_LONG
                                 ).show()
                                 viewModel.setUpdateDialogVisible(false)

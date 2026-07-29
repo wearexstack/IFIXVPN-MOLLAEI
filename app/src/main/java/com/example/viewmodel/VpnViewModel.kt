@@ -37,7 +37,11 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val _vpnStats = MutableStateFlow(VpnStats())
     val vpnStats: StateFlow<VpnStats> = _vpnStats.asStateFlow()
 
-    private val _remoteConfig = MutableStateFlow(RemoteConfig())
+    private val _remoteConfig = MutableStateFlow(
+        RemoteConfig(
+            announcementMessage = "به IFIX VPN خوش آمدید. سرورهای تجاری با سرعت بالا فعال هستند."
+        )
+    )
     val remoteConfig: StateFlow<RemoteConfig> = _remoteConfig.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
@@ -51,9 +55,6 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _isUpdateDialogVisible = MutableStateFlow(false)
     val isUpdateDialogVisible: StateFlow<Boolean> = _isUpdateDialogVisible.asStateFlow()
-
-    private val _isDemoKeySheetOpen = MutableStateFlow(false)
-    val isDemoKeySheetOpen: StateFlow<Boolean> = _isDemoKeySheetOpen.asStateFlow()
 
     private val _licenseError = MutableStateFlow<String?>(null)
     val licenseError: StateFlow<String?> = _licenseError.asStateFlow()
@@ -82,7 +83,6 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         if (_selectedServer.value == null && list.isNotEmpty()) {
             _selectedServer.value = list.first()
         }
-        // If selected server disappeared after refresh, pick first
         val selectedId = _selectedServer.value?.id
         if (selectedId != null && list.none { it.id == selectedId } && list.isNotEmpty()) {
             _selectedServer.value = list.first()
@@ -103,7 +103,6 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private var timerJob: Job? = null
     private var autoRefreshJob: Job? = null
 
-    /** Interval for automatic subscription refresh while app is in foreground (30 minutes). */
     private companion object {
         const val AUTO_REFRESH_INTERVAL_MS = 30 * 60 * 1000L
     }
@@ -116,15 +115,9 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         startAutoRefresh()
     }
 
-    /**
-     * Periodically re-downloads the subscription and updates the server list.
-     * Runs only while the ViewModel (app process) is alive.
-     * Edit https://raw.githubusercontent.com/wearexstack/xstack/main/sub → servers update on next cycle.
-     */
     private fun startAutoRefresh() {
         autoRefreshJob?.cancel()
         autoRefreshJob = viewModelScope.launch {
-            // Wait a bit after startup so initial load finishes first
             delay(60_000L)
             while (isActive) {
                 try {
@@ -132,7 +125,6 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                         ?: SubscriptionParser.DEFAULT_SUB_URL
                     repository.refreshServersFromSubscription(target)
                 } catch (_: Exception) {
-                    // Silent fail – next cycle will retry
                 }
                 delay(AUTO_REFRESH_INTERVAL_MS)
             }
@@ -172,7 +164,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                 val upSpeed = (400..3200).random().toDouble() / 10.0
                 totalDown += (downSpeed * 1024).toLong()
                 totalUp += (upSpeed * 1024).toLong()
-                val serverIp = _selectedServer.value?.ipOrDomain ?: "185.220.101.5"
+                val serverIp = _selectedServer.value?.ipOrDomain ?: "—"
                 _vpnStats.value = VpnStats(
                     durationSeconds = duration,
                     downloadSpeedKbps = downSpeed,
@@ -234,18 +226,6 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun addSubscription(url: String) {
-        viewModelScope.launch {
-            val result = repository.addSubscriptionFromUrl(url)
-            result.onSuccess {
-                _licenseSuccessMsg.value = "اشتراک اضافه شد و ${it.serverCount} سرور بارگذاری شد."
-            }.onFailure {
-                _licenseError.value = it.message ?: "خطا در افزودن اشتراک"
-            }
-        }
-    }
-
-    /** Re-download the main sub (or given URL) and replace server list */
     fun refreshSubscription(url: String? = null) {
         _isRefreshingSub.value = true
         _licenseError.value = null
@@ -260,12 +240,6 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
             }.onFailure {
                 _licenseError.value = it.message ?: "به‌روزرسانی ساب ناموفق بود."
             }
-        }
-    }
-
-    fun deleteSubscription(id: String) {
-        viewModelScope.launch {
-            repository.deleteSubscription(id)
         }
     }
 
@@ -288,10 +262,6 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setUpdateDialogVisible(visible: Boolean) {
         _isUpdateDialogVisible.value = visible
-    }
-
-    fun setDemoKeySheetOpen(open: Boolean) {
-        _isDemoKeySheetOpen.value = open
     }
 
     fun clearMessages() {

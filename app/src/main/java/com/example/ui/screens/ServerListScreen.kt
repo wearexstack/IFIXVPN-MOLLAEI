@@ -1,7 +1,6 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,10 +20,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -69,14 +66,14 @@ fun ServerListScreen(
     onTestAllLatencies: () -> Unit,
     onNavigateBack: () -> Unit
 ) {
-    val protocols = listOf("All", "VLESS", "VMess", "Trojan", "Shadowsocks", "Xray")
+    val protocols = listOf("همه", "VLESS", "VMess", "Trojan", "Shadowsocks", "Hysteria2")
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        text = "Select Server",
+                        text = "انتخاب سرور",
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
                         color = MaterialTheme.colorScheme.onBackground
@@ -86,7 +83,7 @@ fun ServerListScreen(
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
+                            contentDescription = "بازگشت"
                         )
                     }
                 },
@@ -94,7 +91,7 @@ fun ServerListScreen(
                     IconButton(onClick = onTestAllLatencies) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
-                            contentDescription = "Test Latency Ping",
+                            contentDescription = "تست پینگ",
                             tint = CyanPrimary
                         )
                     }
@@ -113,15 +110,14 @@ fun ServerListScreen(
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp)
         ) {
-            // Search Input
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = onSearchQueryChange,
-                placeholder = { Text("Search country, server or protocol...") },
+                placeholder = { Text("جستجوی کشور، سرور یا پروتکل...") },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Search,
-                        contentDescription = "Search",
+                        contentDescription = null,
                         tint = CyanPrimary
                     )
                 },
@@ -138,16 +134,17 @@ fun ServerListScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Protocol Filter Chips
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 items(protocols) { p ->
-                    val isSelected = selectedProtocolFilter == p
+                    val filterValue = if (p == "همه") "All" else p
+                    val isSelected = selectedProtocolFilter == filterValue ||
+                        (p == "همه" && selectedProtocolFilter == "All")
                     FilterChip(
                         selected = isSelected,
-                        onClick = { onProtocolFilterSelect(p) },
+                        onClick = { onProtocolFilterSelect(filterValue) },
                         label = { Text(p, fontSize = 12.sp) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = CyanPrimary,
@@ -161,23 +158,15 @@ fun ServerListScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Server Count & Test Action Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "${serverList.size} Online Nodes Available",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Text(
+                text = "${serverList.size} سرور آنلاین",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Server Cards List
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxSize()
@@ -215,20 +204,15 @@ fun ServerListScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text(
-                                    text = server.flagEmoji,
-                                    fontSize = 28.sp
-                                )
+                                Text(text = server.flagEmoji, fontSize = 28.sp)
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = server.name,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
-                                            color = MaterialTheme.colorScheme.onBackground
-                                        )
-                                    }
+                                    Text(
+                                        text = server.name,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = MaterialTheme.colorScheme.onBackground
+                                    )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Box(
@@ -252,7 +236,6 @@ fun ServerListScreen(
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(6.dp))
-                                    // User load progress
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         LinearProgressIndicator(
                                             progress = { server.userCapacityPercent / 100f },
@@ -265,7 +248,7 @@ fun ServerListScreen(
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = "${server.userCapacityPercent}% load",
+                                            text = "${server.userCapacityPercent}% ظرفیت",
                                             fontSize = 10.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -293,7 +276,7 @@ fun ServerListScreen(
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Icon(
                                         imageVector = Icons.Default.Check,
-                                        contentDescription = "Selected",
+                                        contentDescription = "انتخاب‌شده",
                                         tint = CyanPrimary,
                                         modifier = Modifier.size(20.dp)
                                     )

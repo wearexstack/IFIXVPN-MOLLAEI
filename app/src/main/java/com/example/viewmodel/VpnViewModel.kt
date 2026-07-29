@@ -10,6 +10,7 @@ import com.example.data.VpnServerEntity
 import com.example.models.ConnectionStatus
 import com.example.models.RemoteConfig
 import com.example.models.VpnStats
+import com.example.network.SubscriptionParser
 import com.example.repository.VpnRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -62,6 +63,9 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val _isActivatingLicense = MutableStateFlow(false)
     val isActivatingLicense: StateFlow<Boolean> = _isActivatingLicense.asStateFlow()
 
+    private val _isRefreshingSub = MutableStateFlow(false)
+    val isRefreshingSub: StateFlow<Boolean> = _isRefreshingSub.asStateFlow()
+
     val activeLicense: StateFlow<LicenseEntity?> = repository.activeLicense
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
@@ -75,6 +79,11 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     ) { serverList, query, protocol ->
         var list = serverList
         if (_selectedServer.value == null && list.isNotEmpty()) {
+            _selectedServer.value = list.first()
+        }
+        // If selected server disappeared after refresh, pick first
+        val selectedId = _selectedServer.value?.id
+        if (selectedId != null && list.none { it.id == selectedId } && list.isNotEmpty()) {
             _selectedServer.value = list.first()
         }
         if (query.isNotBlank()) {
@@ -95,7 +104,6 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch {
             repository.ensureInitialData()
-            // Re-validate stored license against server on app start
             repository.revalidateLicense()
         }
     }
@@ -199,9 +207,27 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val result = repository.addSubscriptionFromUrl(url)
             result.onSuccess {
-                _licenseSuccessMsg.value = "اشتراک با موفقیت اضافه شد."
+                _licenseSuccessMsg.value = "اشتراک اضافه شد و ${it.serverCount} سرور بارگذاری شد."
             }.onFailure {
                 _licenseError.value = it.message ?: "خطا در افزودن اشتراک"
+            }
+        }
+    }
+
+    /** Re-download the main sub (or given URL) and replace server list */
+    fun refreshSubscription(url: String? = null) {
+        _isRefreshingSub.value = true
+        _licenseError.value = null
+        viewModelScope.launch {
+            val target = url
+                ?: allSubscriptions.value.firstOrNull()?.subUrl
+                ?: SubscriptionParser.DEFAULT_SUB_URL
+            val result = repository.refreshServersFromSubscription(target)
+            _isRefreshingSub.value = false
+            result.onSuccess { count ->
+                _licenseSuccessMsg.value = "✅ $count سرور از ساب به‌روز شد."
+            }.onFailure {
+                _licenseError.value = it.message ?: "به‌روزرسانی ساب ناموفق بود."
             }
         }
     }

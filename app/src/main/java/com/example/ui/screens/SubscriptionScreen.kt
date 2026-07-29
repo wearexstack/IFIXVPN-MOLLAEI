@@ -18,7 +18,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material3.AlertDialog
@@ -26,6 +25,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.SubscriptionEntity
+import com.example.network.SubscriptionParser
 import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.CyanSecondary
 import com.example.ui.theme.VpnDisconnectedRed
@@ -63,18 +64,15 @@ import java.util.Locale
 @Composable
 fun SubscriptionScreen(
     subscriptions: List<SubscriptionEntity>,
+    isRefreshing: Boolean = false,
+    statusMessage: String? = null,
     onAddSubscription: (String) -> Unit,
     onDeleteSubscription: (String) -> Unit,
+    onRefreshSubscription: () -> Unit,
     onNavigateBack: () -> Unit
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
     var subUrlInput by remember { mutableStateOf("") }
-
-    val sampleDemoUrls = listOf(
-        "vless://8a3b5c91-4e01-4b7b-923f-ifixvpn12345@de1.ifixvpn.net:443?type=ws&security=tls#Germany-VLESS-VIP",
-        "vmess://eyJ2IjoiMiIsInBzIjoiTmV0aGVybGFuZHMgVk1lc3MiLCJhZGQiOiJubDEuaWZpeHZwbi5uZXQiLCJwb3J0Ijo4NDQzfQ==",
-        "trojan://ifixvpnSecretPass@fi1.ifixvpn.net:2083?sni=fi1.ifixvpn.net#Finland-Trojan-VIP"
-    )
 
     Scaffold(
         topBar = {
@@ -93,6 +91,27 @@ fun SubscriptionScreen(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back"
                         )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = onRefreshSubscription,
+                        enabled = !isRefreshing,
+                        modifier = Modifier.testTag("refresh_subscription_button")
+                    ) {
+                        if (isRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.dp,
+                                color = CyanPrimary
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Refresh servers from sub",
+                                tint = CyanPrimary
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -123,18 +142,56 @@ fun SubscriptionScreen(
                 .padding(horizontal = 16.dp)
         ) {
             Text(
-                text = "Auto-update V2Ray / Xray subscription feeds directly from your provider.",
+                text = "سرورها از ساب GitHub لود می‌شوند. بعد از ادیت فایل sub، دکمه Refresh را بزن.",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 10.dp)
             )
+
+            if (statusMessage != null) {
+                Text(
+                    text = statusMessage,
+                    fontSize = 12.sp,
+                    color = CyanSecondary,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+
+            Button(
+                onClick = onRefreshSubscription,
+                enabled = !isRefreshing,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = CyanPrimary,
+                    contentColor = Color(0xFF0F172A)
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                if (isRefreshing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = Color(0xFF0F172A)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("در حال به‌روزرسانی...")
+                } else {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Refresh Servers from Subscription", fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             if (subscriptions.isEmpty()) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 20.dp)
+                        .padding(top = 12.dp)
                 ) {
                     Column(
                         modifier = Modifier
@@ -150,16 +207,15 @@ fun SubscriptionScreen(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "No Subscriptions Added",
+                            text = "No Subscriptions Yet",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = MaterialTheme.colorScheme.onBackground
+                            fontSize = 16.sp
                         )
                         Text(
-                            text = "Tap the + button below to paste a VLESS/VMess/Trojan subscription URL.",
-                            fontSize = 12.sp,
+                            text = "Default: ${SubscriptionParser.DEFAULT_SUB_URL}",
+                            fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp)
+                            modifier = Modifier.padding(top = 6.dp)
                         )
                     }
                 }
@@ -193,8 +249,7 @@ fun SubscriptionScreen(
                                         Text(
                                             text = sub.name,
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp,
-                                            color = MaterialTheme.colorScheme.onBackground
+                                            fontSize = 15.sp
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
@@ -202,25 +257,23 @@ fun SubscriptionScreen(
                                         text = sub.subUrl,
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1
+                                        maxLines = 2
                                     )
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Text(
-                                        text = "${sub.serverCount} active nodes • Updated ${formatTimestamp(sub.lastUpdated)}",
+                                        text = "${sub.serverCount} nodes • Updated ${formatTimestamp(sub.lastUpdated)}",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = CyanSecondary
                                     )
                                 }
 
-                                Row {
-                                    IconButton(onClick = { onDeleteSubscription(sub.id) }) {
-                                        Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "Delete",
-                                            tint = VpnDisconnectedRed
-                                        )
-                                    }
+                                IconButton(onClick = { onDeleteSubscription(sub.id) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Delete",
+                                        tint = VpnDisconnectedRed
+                                    )
                                 }
                             }
                         }
@@ -234,16 +287,12 @@ fun SubscriptionScreen(
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
             title = {
-                Text(
-                    text = "Add Subscription URL",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
-                )
+                Text("Add Subscription URL", fontWeight = FontWeight.Bold, fontSize = 18.sp)
             },
             text = {
                 Column {
                     Text(
-                        text = "Enter VLESS, VMess, Trojan, or HTTPS Subscription Link:",
+                        text = "لینک HTTPS ساب یا یک نود تکی (vless/vmess/...):",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -251,46 +300,21 @@ fun SubscriptionScreen(
                     OutlinedTextField(
                         value = subUrlInput,
                         onValueChange = { subUrlInput = it },
-                        placeholder = { Text("vless:// or https://...") },
+                        placeholder = { Text("https://... or vless://...") },
                         singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = CyanPrimary
-                        ),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = CyanPrimary),
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    OutlinedButton(
+                        onClick = {
+                            subUrlInput = SubscriptionParser.DEFAULT_SUB_URL
+                        },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        OutlinedButton(
-                            onClick = {
-                                subUrlInput = sampleDemoUrls.random()
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ContentPaste,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Paste Demo", fontSize = 11.sp)
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                subUrlInput = "vless://qr-scanned-demo-node@de.ifixvpn.net:443"
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.QrCodeScanner,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("QR Code", fontSize = 11.sp)
-                        }
+                        Icon(Icons.Default.ContentPaste, null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Paste XStack Default Sub", fontSize = 12.sp)
                     }
                 }
             },
@@ -303,7 +327,10 @@ fun SubscriptionScreen(
                             showAddDialog = false
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary, contentColor = Color(0xFF0F172A))
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = CyanPrimary,
+                        contentColor = Color(0xFF0F172A)
+                    )
                 ) {
                     Text("IMPORT")
                 }

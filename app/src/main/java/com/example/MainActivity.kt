@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
             val licenseError by viewModel.licenseError.collectAsState()
             val licenseSuccessMsg by viewModel.licenseSuccessMsg.collectAsState()
             val isUpdateDialogVisible by viewModel.isUpdateDialogVisible.collectAsState()
+            val isRefreshingSub by viewModel.isRefreshingSub.collectAsState()
 
             IfixVpnTheme(darkTheme = isDarkMode) {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -111,8 +112,11 @@ class MainActivity : ComponentActivity() {
                         composable("subscriptions") {
                             SubscriptionScreen(
                                 subscriptions = allSubscriptions,
+                                isRefreshing = isRefreshingSub,
+                                statusMessage = licenseSuccessMsg ?: licenseError,
                                 onAddSubscription = { url -> viewModel.addSubscription(url) },
                                 onDeleteSubscription = { id -> viewModel.deleteSubscription(id) },
+                                onRefreshSubscription = { viewModel.refreshSubscription() },
                                 onNavigateBack = { navController.popBackStack() }
                             )
                         }

@@ -11,9 +11,15 @@ import com.example.network.ActivateLicenseRequest
 import com.example.network.ApiClient
 import com.example.network.CheckLicenseRequest
 import com.example.network.DeactivateLicenseRequest
+import com.example.network.SubscriptionParser
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 class VpnRepository(
     private val dao: VpnDao,
@@ -24,6 +30,11 @@ class VpnRepository(
     val activeLicense: Flow<LicenseEntity?> = dao.getActiveLicense()
     val allSubscriptions: Flow<List<SubscriptionEntity>> = dao.getAllSubscriptions()
 
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .build()
+
     @SuppressLint("HardwareIds")
     private fun deviceId(): String {
         return Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID)
@@ -31,144 +42,118 @@ class VpnRepository(
     }
 
     suspend fun ensureInitialData() {
-        val existingServers = dao.getAllServers().firstOrNull()
-        if (existingServers.isNullOrEmpty()) {
-            val initialList = listOf(
-                VpnServerEntity(
-                    id = "srv_de_1",
-                    name = "Frankfurt VIP 01 - Fast",
-                    countryCode = "DE",
-                    countryName = "Germany",
-                    ipOrDomain = "de1.ifixvpn.net",
-                    port = 443,
-                    protocol = "VLESS",
-                    latencyMs = 38,
-                    status = "ONLINE",
-                    userCapacityPercent = 32,
-                    flagEmoji = "🇩🇪"
-                ),
-                VpnServerEntity(
-                    id = "srv_nl_1",
-                    name = "Amsterdam Streaming 01",
-                    countryCode = "NL",
-                    countryName = "Netherlands",
-                    ipOrDomain = "nl1.ifixvpn.net",
-                    port = 8443,
-                    protocol = "VMess",
-                    latencyMs = 45,
-                    status = "ONLINE",
-                    userCapacityPercent = 58,
-                    flagEmoji = "🇳🇱"
-                ),
-                VpnServerEntity(
-                    id = "srv_fi_1",
-                    name = "Helsinki Ultra Secure",
-                    countryCode = "FI",
-                    countryName = "Finland",
-                    ipOrDomain = "fi1.ifixvpn.net",
-                    port = 2083,
-                    protocol = "Trojan",
-                    latencyMs = 52,
-                    status = "ONLINE",
-                    userCapacityPercent = 25,
-                    flagEmoji = "🇫🇮"
-                ),
-                VpnServerEntity(
-                    id = "srv_us_1",
-                    name = "New York Gaming 01",
-                    countryCode = "US",
-                    countryName = "United States",
-                    ipOrDomain = "us1.ifixvpn.net",
-                    port = 443,
-                    protocol = "Xray",
-                    latencyMs = 110,
-                    status = "ONLINE",
-                    userCapacityPercent = 70,
-                    flagEmoji = "🇺🇸"
-                ),
-                VpnServerEntity(
-                    id = "srv_uk_1",
-                    name = "London Stealth 01",
-                    countryCode = "GB",
-                    countryName = "United Kingdom",
-                    ipOrDomain = "uk1.ifixvpn.net",
-                    port = 8080,
-                    protocol = "Shadowsocks",
-                    latencyMs = 65,
-                    status = "ONLINE",
-                    userCapacityPercent = 40,
-                    flagEmoji = "🇬🇧"
-                ),
-                VpnServerEntity(
-                    id = "srv_sg_1",
-                    name = "Singapore Turbo 01",
-                    countryCode = "SG",
-                    countryName = "Singapore",
-                    ipOrDomain = "sg1.ifixvpn.net",
-                    port = 443,
-                    protocol = "VLESS",
-                    latencyMs = 135,
-                    status = "ONLINE",
-                    userCapacityPercent = 48,
-                    flagEmoji = "🇸🇬"
-                ),
-                VpnServerEntity(
-                    id = "srv_ch_1",
-                    name = "Zurich VIP Privacy",
-                    countryCode = "CH",
-                    countryName = "Switzerland",
-                    ipOrDomain = "ch1.ifixvpn.net",
-                    port = 2053,
-                    protocol = "Trojan",
-                    latencyMs = 49,
-                    status = "ONLINE",
-                    userCapacityPercent = 20,
-                    flagEmoji = "🇨🇭"
-                ),
-                VpnServerEntity(
-                    id = "srv_jp_1",
-                    name = "Tokyo Express 01",
-                    countryCode = "JP",
-                    countryName = "Japan",
-                    ipOrDomain = "jp1.ifixvpn.net",
-                    port = 443,
-                    protocol = "V2Ray",
-                    latencyMs = 160,
-                    status = "ONLINE",
-                    userCapacityPercent = 62,
-                    flagEmoji = "🇯🇵"
-                )
-            )
-            dao.insertServers(initialList)
-        }
-
-        // Do NOT auto-activate a default license anymore.
-        // User must activate via online API (or offline demo fallback).
-
+        // Default subscription = your GitHub raw sub (edit that file → servers update)
         val existingSubs = dao.getAllSubscriptions().firstOrNull()
         if (existingSubs.isNullOrEmpty()) {
             val defaultSub = SubscriptionEntity(
-                id = "sub_default_1",
-                name = "IFIX VIP Premium Nodes",
-                subUrl = "https://ifixvpn.net/api/v1/sub/vip",
-                serverCount = 8
+                id = "sub_xstack_main",
+                name = "XStack Main Subscription",
+                subUrl = SubscriptionParser.DEFAULT_SUB_URL,
+                serverCount = 0,
+                isAutoUpdateEnabled = true
             )
             dao.insertSubscription(defaultSub)
+        }
+
+        // Always try to refresh servers from subscription on startup
+        val sub = dao.getAllSubscriptions().firstOrNull()?.firstOrNull()
+            ?: return
+
+        val result = refreshServersFromSubscription(sub.subUrl)
+        if (result.isFailure) {
+            // Fallback placeholder if network fails and DB empty
+            val existingServers = dao.getAllServers().firstOrNull()
+            if (existingServers.isNullOrEmpty()) {
+                dao.insertServers(
+                    listOf(
+                        VpnServerEntity(
+                            id = "fallback_1",
+                            name = "Offline placeholder – open Subscriptions & Refresh",
+                            countryCode = "UN",
+                            countryName = "International",
+                            ipOrDomain = "localhost",
+                            port = 443,
+                            protocol = "VLESS",
+                            latencyMs = 999,
+                            status = "MAINTENANCE",
+                            userCapacityPercent = 0,
+                            flagEmoji = "🌐"
+                        )
+                    )
+                )
+            }
         }
     }
 
     /**
-     * Real online license activation.
-     * 1) Calls backend POST /api/license/activate
-     * 2) On network failure, falls back to offline demo keys (if enabled)
+     * Download subscription URL, parse nodes, replace all servers in DB.
+     * Call this after you edit https://raw.githubusercontent.com/wearexstack/xstack/main/sub
      */
+    suspend fun refreshServersFromSubscription(subUrl: String = SubscriptionParser.DEFAULT_SUB_URL): Result<Int> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val request = Request.Builder()
+                    .url(subUrl.trim())
+                    .header("User-Agent", "IFIX-VPN-Android/1.0")
+                    .get()
+                    .build()
+
+                val response = httpClient.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        Exception("دانلود ساب ناموفق بود (HTTP ${response.code})")
+                    )
+                }
+                val body = response.body?.string().orEmpty()
+                if (body.isBlank()) {
+                    return@withContext Result.failure(Exception("محتوای ساب خالی است."))
+                }
+
+                val servers = SubscriptionParser.parseSubscriptionBody(body)
+                if (servers.isEmpty()) {
+                    return@withContext Result.failure(
+                        Exception("هیچ نودی از ساب پارس نشد. فرمت لینک‌ها را چک کنید.")
+                    )
+                }
+
+                dao.clearAllServers()
+                dao.insertServers(servers)
+
+                // Update subscription metadata
+                val subs = dao.getAllSubscriptions().firstOrNull().orEmpty()
+                val matching = subs.find { it.subUrl == subUrl } ?: subs.firstOrNull()
+                if (matching != null) {
+                    dao.insertSubscription(
+                        matching.copy(
+                            serverCount = servers.size,
+                            lastUpdated = System.currentTimeMillis()
+                        )
+                    )
+                } else {
+                    dao.insertSubscription(
+                        SubscriptionEntity(
+                            id = "sub_xstack_main",
+                            name = "XStack Main Subscription",
+                            subUrl = subUrl,
+                            serverCount = servers.size,
+                            isAutoUpdateEnabled = true
+                        )
+                    )
+                }
+
+                Result.success(servers.size)
+            } catch (e: Exception) {
+                Result.failure(Exception("خطا در به‌روزرسانی سرورها: ${e.message}"))
+            }
+        }
+    }
+
     suspend fun activateLicense(key: String): Result<LicenseEntity> {
         val cleanKey = key.trim().uppercase()
         if (cleanKey.isBlank()) {
             return Result.failure(Exception("لطفاً کلید لایسنس را وارد کنید."))
         }
 
-        // Try online first
         try {
             val response = ApiClient.licenseApi.activateLicense(
                 ActivateLicenseRequest(
@@ -192,7 +177,6 @@ class VpnRepository(
             }
             return Result.failure(Exception(response.error ?: "فعال‌سازی لایسنس ناموفق بود."))
         } catch (e: Exception) {
-            // Network / server unreachable → optional offline demo
             if (ApiClient.ALLOW_OFFLINE_DEMO) {
                 return activateOfflineDemo(cleanKey)
             }
@@ -236,7 +220,6 @@ class VpnRepository(
         return Result.success(entity)
     }
 
-    /** Periodic online validation of the stored license */
     suspend fun revalidateLicense(): Result<LicenseEntity?> {
         val current = dao.getActiveLicense().firstOrNull() ?: return Result.success(null)
         try {
@@ -259,14 +242,12 @@ class VpnRepository(
                 dao.setLicense(entity)
                 return Result.success(entity)
             }
-            // Server says invalid → clear local
             if (response.status == "INVALID" || response.status == "EXPIRED" || response.status == "DEVICE_NOT_BOUND") {
                 dao.clearLicense()
                 return Result.failure(Exception(response.error ?: "لایسنس دیگر معتبر نیست."))
             }
             return Result.failure(Exception(response.error ?: "بررسی لایسنس ناموفق"))
         } catch (_: Exception) {
-            // Offline: keep local license if not past expiry
             if (current.expiryTimestamp > System.currentTimeMillis() && current.status == "ACTIVE") {
                 return Result.success(current)
             }
@@ -286,59 +267,62 @@ class VpnRepository(
                     )
                 )
             } catch (_: Exception) {
-                // ignore network errors on deactivate
             }
         }
         dao.clearLicense()
     }
 
+    /**
+     * Add a new subscription URL and immediately fetch/parse its nodes.
+     */
     suspend fun addSubscriptionFromUrl(subUrl: String): Result<SubscriptionEntity> {
-        if (!subUrl.startsWith("http://") && !subUrl.startsWith("https://") &&
-            !subUrl.startsWith("vless://") && !subUrl.startsWith("vmess://") &&
-            !subUrl.startsWith("trojan://") && !subUrl.startsWith("ss://")
+        val url = subUrl.trim()
+        if (!url.startsWith("http://") && !url.startsWith("https://") &&
+            !url.startsWith("vless://") && !url.startsWith("vmess://") &&
+            !url.startsWith("trojan://") && !url.startsWith("ss://") &&
+            !url.startsWith("hysteria2://") && !url.startsWith("hy2://")
         ) {
             return Result.failure(Exception("فرمت لینک اشتراک نامعتبر است."))
         }
 
-        val subName = when {
-            subUrl.contains("vless") -> "VLESS Node Config"
-            subUrl.contains("vmess") -> "VMess Node Config"
-            subUrl.contains("trojan") -> "Trojan Node Config"
-            else -> "IFIX Custom Sub #${(100..999).random()}"
+        // Single-node link (not a subscription list URL)
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            val servers = SubscriptionParser.parseSubscriptionBody(url)
+            if (servers.isNotEmpty()) {
+                dao.insertServers(servers)
+            }
+            val sub = SubscriptionEntity(
+                id = UUID.randomUUID().toString(),
+                name = "Single Node",
+                subUrl = url,
+                serverCount = servers.size
+            )
+            dao.insertSubscription(sub)
+            return Result.success(sub)
         }
 
-        val newSub = SubscriptionEntity(
+        val refresh = refreshServersFromSubscription(url)
+        if (refresh.isFailure) {
+            // Still save the sub even if fetch failed once
+            val sub = SubscriptionEntity(
+                id = UUID.randomUUID().toString(),
+                name = "Custom Subscription",
+                subUrl = url,
+                serverCount = 0
+            )
+            dao.insertSubscription(sub)
+            return Result.failure(refresh.exceptionOrNull() ?: Exception("خطا در دریافت ساب"))
+        }
+
+        val count = refresh.getOrDefault(0)
+        val sub = SubscriptionEntity(
             id = UUID.randomUUID().toString(),
-            name = subName,
-            subUrl = subUrl,
-            serverCount = (4..12).random()
+            name = "Subscription",
+            subUrl = url,
+            serverCount = count
         )
-        dao.insertSubscription(newSub)
-
-        val parsedProtocol = when {
-            subUrl.startsWith("vless://") -> "VLESS"
-            subUrl.startsWith("vmess://") -> "VMess"
-            subUrl.startsWith("trojan://") -> "Trojan"
-            subUrl.startsWith("ss://") -> "Shadowsocks"
-            else -> "Xray"
-        }
-
-        val newServer = VpnServerEntity(
-            id = "sub_node_${System.currentTimeMillis()}",
-            name = "Sub Node ($parsedProtocol)",
-            countryCode = "FR",
-            countryName = "France",
-            ipOrDomain = "fr.ifixvpn.net",
-            port = 443,
-            protocol = parsedProtocol,
-            latencyMs = (35..75).random(),
-            status = "ONLINE",
-            userCapacityPercent = 30,
-            flagEmoji = "🇫🇷",
-            configRawUrl = subUrl
-        )
-        dao.insertServers(listOf(newServer))
-        return Result.success(newSub)
+        dao.insertSubscription(sub)
+        return Result.success(sub)
     }
 
     suspend fun deleteSubscription(id: String) {

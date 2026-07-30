@@ -8,7 +8,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
-import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
@@ -16,11 +15,7 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * IFIX VPN service – **Xray-first** core.
- *
- * 1) Build Xray JSON from share link
- * 2) Start [XrayEngine] (libv2ray / xray binary)
- * 3) Establish system TUN (app excluded so core can reach the node)
+ * VPN service – Xray (libv2ray) with real TUN fd via StartLoop(config, tunFd).
  */
 class IfixVpnService : VpnService() {
 
@@ -60,7 +55,6 @@ class IfixVpnService : VpnService() {
         }
     }
 
-    private var tunFd: ParcelFileDescriptor? = null
     private var xray: XrayEngine? = null
     private val starting = AtomicBoolean(false)
 
@@ -78,7 +72,7 @@ class IfixVpnService : VpnService() {
                     stopSelf()
                     return START_NOT_STICKY
                 }
-                startForeground(NOTIF_ID, buildNotification("اتصال Xray به $serverName…"))
+                startForeground(NOTIF_ID, buildNotification("اتصال به $serverName…"))
                 Thread { startTunnel(configUri, serverName) }.start()
             }
             else -> stopTunnel(null)
@@ -91,48 +85,42 @@ class IfixVpnService : VpnService() {
         try {
             broadcast("connecting", null)
 
-            // Prefer Xray JSON; hysteria2 is not native to Xray — reject with clear message
-            val uriLower = configUri.lowercase()
-            if (uriLower.startsWith("hysteria2://") || uriLower.startsWith("hy2://")) {
-                broadcast("error", "Hysteria2 با هسته Xray پشتیبانی نمی‌شود. از vless/trojan/vmess/ss استفاده کنید.")
+            val lower = configUri.lowercase()
+            if (lower.startsWith("hysteria2://") || lower.startsWith("hy2://")) {
+                broadcast("error", "Hysteria2 با Xray پشتیبانی نمی‌شود. سرور VLESS/Trojan/VMess انتخاب کنید.")
                 stopSelf()
                 return
             }
 
-            val xrayJson = SingBoxConfigBuilder.buildXrayConfigFromShareLink(configUri)
-            File(filesDir, "vpn").apply { mkdirs() }
-            File(filesDir, "vpn/xray.json").writeText(xrayJson)
-            Log.i(TAG, "Xray JSON ready (${xrayJson.length} bytes)")
-
-            xray?.stop()
-            xray = XrayEngine(this)
-
-            val coreOk = xray!!.start(applicationContext, xrayJson)
-            if (!coreOk) {
+            if (!XrayEngine.isAvailable()) {
                 broadcast(
                     "error",
-                    "هسته Xray یافت نشد. libv2ray AAR یا باینری xray را در app/libs قرار دهید (README)."
+                    "کتابخانه Xray (libv2ray.aar) نصب نیست. فایل را در app/libs بگذارید و APK را دوباره بسازید."
                 )
                 stopSelf()
                 return
             }
 
-            // System TUN (app disallowed so Xray can dial outbound)
-            tunFd = xray!!.establishTun("IFIX · $serverName")
-            if (tunFd == null) {
-                broadcast("error", "تونل VPN ساخته نشد (مجوز؟)")
-                xray?.stop()
+            val xrayJson = XrayConfigBuilder.build(configUri)
+            File(filesDir, "vpn").apply { mkdirs() }
+            File(filesDir, "vpn/xray.json").writeText(xrayJson)
+            Log.i(TAG, "config ${xrayJson.length} bytes")
+
+            xray?.stop()
+            xray = XrayEngine(this)
+            val ok = xray!!.start(applicationContext, xrayJson, "IFIX · $serverName")
+            if (!ok) {
+                broadcast("error", "استارت هسته Xray ناموفق بود. لاگ XrayEngine را ببینید.")
                 stopSelf()
                 return
             }
 
             isRunning = true
-            startForeground(NOTIF_ID, buildNotification("متصل · $serverName (Xray)"))
+            startForeground(NOTIF_ID, buildNotification("متصل · $serverName"))
             broadcast("connected", serverName)
-            Log.i(TAG, "Xray tunnel up")
         } catch (e: Exception) {
-            Log.e(TAG, "startTunnel failed", e)
-            broadcast("error", e.message ?: "خطا در اتصال Xray")
+            Log.e(TAG, "startTunnel", e)
+            broadcast("error", e.message ?: "خطا در اتصال")
             stopTunnel(null)
         } finally {
             starting.set(false)
@@ -145,11 +133,6 @@ class IfixVpnService : VpnService() {
         } catch (_: Exception) {
         }
         xray = null
-        try {
-            tunFd?.close()
-        } catch (_: Exception) {
-        }
-        tunFd = null
         isRunning = false
         broadcast("disconnected", message)
         stopForeground(STOP_FOREGROUND_REMOVE)

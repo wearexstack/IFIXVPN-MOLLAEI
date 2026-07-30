@@ -1,7 +1,6 @@
 package com.example
 
 import android.app.Activity
-import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -60,8 +59,20 @@ class MainActivity : ComponentActivity() {
             val vpnPermissionIntent by viewModel.vpnPermissionIntent.collectAsState()
 
             LaunchedEffect(vpnPermissionIntent) {
-                vpnPermissionIntent?.let { intent ->
-                    vpnPermissionLauncher.launch(intent)
+                vpnPermissionIntent?.let { vpnPermissionLauncher.launch(it) }
+            }
+
+            // Surface connection / license errors as Toast on every screen
+            LaunchedEffect(licenseError) {
+                licenseError?.let {
+                    Toast.makeText(this@MainActivity, it, Toast.LENGTH_LONG).show()
+                    viewModel.clearMessages()
+                }
+            }
+            LaunchedEffect(licenseSuccessMsg) {
+                licenseSuccessMsg?.let {
+                    Toast.makeText(this@MainActivity, it, Toast.LENGTH_SHORT).show()
+                    viewModel.clearMessages()
                 }
             }
 
@@ -73,8 +84,8 @@ class MainActivity : ComponentActivity() {
                         composable("splash") {
                             SplashScreen(
                                 isLicenseActive = activeLicense?.status == "ACTIVE",
-                                onSplashFinished = { targetDestination ->
-                                    navController.navigate(targetDestination) {
+                                onSplashFinished = { target ->
+                                    navController.navigate(target) {
                                         popUpTo("splash") { inclusive = true }
                                     }
                                 }
@@ -83,9 +94,9 @@ class MainActivity : ComponentActivity() {
 
                         composable("license") {
                             LicenseActivationScreen(
-                                licenseError = licenseError,
-                                licenseSuccessMsg = licenseSuccessMsg,
-                                onActivateKey = { key -> viewModel.activateLicense(key) },
+                                licenseError = null,
+                                licenseSuccessMsg = null,
+                                onActivateKey = { viewModel.activateLicense(it) },
                                 onNavigateHome = {
                                     navController.navigate("home") {
                                         popUpTo("license") { inclusive = true }
@@ -105,7 +116,10 @@ class MainActivity : ComponentActivity() {
                                 isDarkMode = isDarkMode,
                                 onToggleConnect = { viewModel.toggleConnect() },
                                 onNavigateServerList = { navController.navigate("servers") },
-                                onNavigateSubscriptions = { navController.navigate("subscriptions") },
+                                onNavigateSubscriptions = {
+                                    viewModel.refreshSubscription()
+                                    navController.navigate("subscriptions")
+                                },
                                 onNavigateSettings = { navController.navigate("settings") },
                                 onToggleTheme = { viewModel.toggleTheme() }
                             )
@@ -129,7 +143,7 @@ class MainActivity : ComponentActivity() {
                             SubscriptionScreen(
                                 subscriptions = allSubscriptions,
                                 isRefreshing = isRefreshingSub,
-                                statusMessage = licenseSuccessMsg ?: licenseError,
+                                statusMessage = null,
                                 onRefreshSubscription = { viewModel.refreshSubscription() },
                                 onNavigateBack = { navController.popBackStack() }
                             )

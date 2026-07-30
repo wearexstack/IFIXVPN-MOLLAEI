@@ -1,44 +1,28 @@
-# هسته Xray برای IFIX VPN
+# libv2ray.aar (الزامی برای اتصال واقعی)
 
-مسیر پیش‌فرض اپ **Xray-core** است (نه sing-box).
+بدون این فایل، اپ بیلد می‌شود ولی **پروکسی واقعی کار نمی‌کند**.
 
-## گزینه ۱ — libv2ray (AndroidLibXrayLite)
-
-1. از پروژه [AndroidLibXrayLite](https://github.com/2dust/AndroidLibXrayLite) یا فورک سازگار، AAR بسازید.
-2. فایل را اینجا کپی کنید:
-
-```text
-app/libs/libv2ray.aar
-```
-
-3. پروژه را دوباره بیلد کنید. `build.gradle.kts` همه `*.aar` این پوشه را لود می‌کند.
-
-## گزینه ۲ — باینری xray
-
-باینری رسمی را برای ABI دستگاه در `jniLibs` بگذارید، مثلاً:
-
-```text
-app/src/main/jniLibs/arm64-v8a/libxray.so
-```
-
-`XrayEngine` مسیر `nativeLibraryDir` را برای `libxray.so` / `xray` چک می‌کند.
-
-## پروتکل‌های پشتیبانی‌شده در کانفیگ
-
-| لینک | Xray |
-|------|------|
-| vless:// | ✅ |
-| trojan:// | ✅ |
-| vmess:// | ✅ |
-| ss:// | ✅ |
-| hysteria2:// | ❌ (نیاز به sing-box) |
-
-## لاگ
+## ساخت از AndroidLibXrayLite
 
 ```bash
-adb logcat -s XrayEngine:D IfixVpnService:D
+git clone https://github.com/2dust/AndroidLibXrayLite.git
+cd AndroidLibXrayLite
+gomobile init
+go mod tidy -v
+gomobile bind -v -androidapi 24 -trimpath -ldflags='-s -w -buildid= -checklinkname=0' ./
+# خروجی: libv2ray.aar + libv2ray-sources.jar
+cp libv2ray.aar  /path/to/IFIXVPN-MOLLAEI/app/libs/
 ```
 
-## نکته
+سپس در ریشه پروژه:
 
-تونل سیستم (`VpnService`) ترافیک را می‌گیرد؛ برای مسیر کامل TUN→SOCKS→Xray در نسخه‌های بعدی می‌توان **tun2socks / hev-socks5-tunnel** اضافه کرد. با `addDisallowedApplication(packageName)` هسته Xray می‌تواند به نود وصل شود.
+```bash
+gradle :app:assembleDebug
+```
+
+API استفاده‌شده در اپ:
+
+- `Libv2ray.InitCoreEnv(path, key)`
+- `Libv2ray.NewCoreController(CoreCallbackHandler)`
+- `CoreController.StartLoop(configJson, tunFd)`
+- `CoreController.StopLoop()`

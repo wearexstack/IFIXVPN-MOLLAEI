@@ -1,13 +1,17 @@
 package com.example
 
+import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -28,6 +32,12 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: VpnViewModel by viewModels()
 
+    private val vpnPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        viewModel.onVpnPermissionResult(result.resultCode == Activity.RESULT_OK)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -47,6 +57,13 @@ class MainActivity : ComponentActivity() {
             val licenseSuccessMsg by viewModel.licenseSuccessMsg.collectAsState()
             val isUpdateDialogVisible by viewModel.isUpdateDialogVisible.collectAsState()
             val isRefreshingSub by viewModel.isRefreshingSub.collectAsState()
+            val vpnPermissionIntent by viewModel.vpnPermissionIntent.collectAsState()
+
+            LaunchedEffect(vpnPermissionIntent) {
+                vpnPermissionIntent?.let { intent ->
+                    vpnPermissionLauncher.launch(intent)
+                }
+            }
 
             IfixVpnTheme(darkTheme = isDarkMode) {
                 Surface(modifier = Modifier.fillMaxSize()) {

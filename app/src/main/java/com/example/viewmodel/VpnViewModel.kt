@@ -1,6 +1,12 @@
 package com.example.viewmodel
 
 import android.app.Application
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.net.VpnService
+import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
@@ -12,6 +18,7 @@ import com.example.models.RemoteConfig
 import com.example.models.VpnStats
 import com.example.network.SubscriptionParser
 import com.example.repository.VpnRepository
+import com.example.vpn.IfixVpnService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,6 +75,10 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val _isRefreshingSub = MutableStateFlow(false)
     val isRefreshingSub: StateFlow<Boolean> = _isRefreshingSub.asStateFlow()
 
+    /** Non-null when Activity must call VpnService.prepare() */
+    private val _vpnPermissionIntent = MutableStateFlow<Intent?>(null)
+    val vpnPermissionIntent: StateFlow<Intent?> = _vpnPermissionIntent.asStateFlow()
+
     val activeLicense: StateFlow<LicenseEntity?> = repository.activeLicense
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
@@ -103,16 +114,53 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private var timerJob: Job? = null
     private var autoRefreshJob: Job? = null
 
+    private val vpnReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != IfixVpnService.BROADCAST_STATE) return
+            when (intent.getStringExtra(IfixVpnService.EXTRA_STATE)) {
+                "connecting" -> _connectionStatus.value = ConnectionStatus.CONNECTING
+                "connected" -> {
+                    _connectionStatus.value = ConnectionStatus.CONNECTED
+                    startVpnTimerAndStats()
+                }
+                "disconnected" -> {
+                    _connectionStatus.value = ConnectionStatus.DISCONNECTED
+                    stopVpnTimerAndStats()
+                }
+                "error" -> {
+                    _connectionStatus.value = ConnectionStatus.DISCONNECTED
+                    stopVpnTimerAndStats()
+                    _licenseError.value = intent.getStringExtra(IfixVpnService.EXTRA_MESSAGE)
+                        ?: "خطا در اتصال VPN"
+                }
+            }
+        }
+    }
+
     private companion object {
         const val AUTO_REFRESH_INTERVAL_MS = 30 * 60 * 1000L
     }
 
     init {
+        val app = getApplication<Application>()
+        val filter = IntentFilter(IfixVpnService.BROADCAST_STATE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            app.registerReceiver(vpnReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            app.registerReceiver(vpnReceiver, filter)
+        }
+
         viewModelScope.launch {
             repository.ensureInitialData()
             repository.revalidateLicense()
         }
         startAutoRefresh()
+
+        if (IfixVpnService.isRunning) {
+            _connectionStatus.value = ConnectionStatus.CONNECTED
+            startVpnTimerAndStats()
+        }
     }
 
     private fun startAutoRefresh() {
@@ -132,22 +180,56 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleConnect() {
+        val app = getApplication<Application>()
         val current = _connectionStatus.value
-        if (current == ConnectionStatus.DISCONNECTED) {
-            _connectionStatus.value = ConnectionStatus.CONNECTING
-            viewModelScope.launch {
-                delay(1500)
-                _connectionStatus.value = ConnectionStatus.CONNECTED
-                startVpnTimerAndStats()
-            }
-        } else if (current == ConnectionStatus.CONNECTED) {
+
+        if (current == ConnectionStatus.CONNECTED || current == ConnectionStatus.CONNECTING) {
             _connectionStatus.value = ConnectionStatus.DISCONNECTING
-            viewModelScope.launch {
-                delay(800)
-                _connectionStatus.value = ConnectionStatus.DISCONNECTED
-                stopVpnTimerAndStats()
-            }
+            IfixVpnService.disconnect(app)
+            return
         }
+
+        val server = _selectedServer.value
+        if (server == null) {
+            _licenseError.value = "ابتدا یک سرور انتخاب کنید."
+            return
+        }
+        val configUri = server.configRawUrl
+        if (configUri.isBlank()) {
+            _licenseError.value = "این سرور لینک کانفیگ ندارد. ساب را رفرش کنید."
+            return
+        }
+
+        // Request VPN permission if needed
+        val prepare = VpnService.prepare(app)
+        if (prepare != null) {
+            _vpnPermissionIntent.value = prepare
+            return
+        }
+
+        startVpnService(server)
+    }
+
+    /** Called from Activity after user grants VPN permission. */
+    fun onVpnPermissionResult(granted: Boolean) {
+        _vpnPermissionIntent.value = null
+        if (!granted) {
+            _licenseError.value = "مجوز VPN داده نشد."
+            return
+        }
+        val server = _selectedServer.value ?: return
+        startVpnService(server)
+    }
+
+    private fun startVpnService(server: VpnServerEntity) {
+        val app = getApplication<Application>()
+        _connectionStatus.value = ConnectionStatus.CONNECTING
+        _licenseError.value = null
+        IfixVpnService.connect(
+            context = app,
+            configUri = server.configRawUrl,
+            serverName = server.name
+        )
     }
 
     private fun startVpnTimerAndStats() {
@@ -183,12 +265,19 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectServer(server: VpnServerEntity) {
+        val wasConnected = _connectionStatus.value == ConnectionStatus.CONNECTED
         _selectedServer.value = server
-        if (_connectionStatus.value == ConnectionStatus.CONNECTED) {
+        if (wasConnected) {
+            // Reconnect to new server
+            val app = getApplication<Application>()
+            IfixVpnService.disconnect(app)
             viewModelScope.launch {
-                _connectionStatus.value = ConnectionStatus.CONNECTING
-                delay(1200)
-                _connectionStatus.value = ConnectionStatus.CONNECTED
+                delay(500)
+                if (VpnService.prepare(app) == null) {
+                    startVpnService(server)
+                } else {
+                    _vpnPermissionIntent.value = VpnService.prepare(app)
+                }
             }
         }
     }
@@ -271,6 +360,10 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        try {
+            getApplication<Application>().unregisterReceiver(vpnReceiver)
+        } catch (_: Exception) {
+        }
         autoRefreshJob?.cancel()
         timerJob?.cancel()
     }

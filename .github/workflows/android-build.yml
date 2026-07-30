@@ -8,6 +8,10 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
+env:
+  LIBV2RAY_VERSION: "v26.7.28"
+  LIBV2RAY_URL: "https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.7.28/libv2ray.aar"
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -31,6 +35,20 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
+      - name: Download libv2ray.aar (Xray core)
+        run: |
+          mkdir -p app/libs
+          echo "Downloading ${LIBV2RAY_URL}"
+          curl -fL --retry 3 --retry-delay 5 -o app/libs/libv2ray.aar "${LIBV2RAY_URL}"
+          ls -lh app/libs/libv2ray.aar
+          # Must be ~50MB+ binary AAR, not an HTML error page
+          SIZE=$(stat -c%s app/libs/libv2ray.aar)
+          if [ "$SIZE" -lt 1000000 ]; then
+            echo "ERROR: libv2ray.aar too small ($SIZE bytes) – download failed"
+            exit 1
+          fi
+          echo "libv2ray.aar OK ($SIZE bytes)"
+
       - name: Build Debug APK
         run: gradle :app:assembleDebug --stacktrace --no-daemon
 
@@ -39,7 +57,7 @@ jobs:
         with:
           name: IFIX_VPN_Debug_APK
           path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Build Release AAB (Google Play Bundle)
         run: gradle :app:bundleRelease --stacktrace --no-daemon || true

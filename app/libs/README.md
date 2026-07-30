@@ -1,28 +1,14 @@
-# libv2ray.aar (الزامی برای اتصال واقعی)
+# libv2ray.aar
 
-بدون این فایل، اپ بیلد می‌شود ولی **پروکسی واقعی کار نمی‌کند**.
+**GitHub Actions downloads this automatically** before every build.
 
-## ساخت از AndroidLibXrayLite
-
-```bash
-git clone https://github.com/2dust/AndroidLibXrayLite.git
-cd AndroidLibXrayLite
-gomobile init
-go mod tidy -v
-gomobile bind -v -androidapi 24 -trimpath -ldflags='-s -w -buildid= -checklinkname=0' ./
-# خروجی: libv2ray.aar + libv2ray-sources.jar
-cp libv2ray.aar  /path/to/IFIXVPN-MOLLAEI/app/libs/
-```
-
-سپس در ریشه پروژه:
+For local builds:
 
 ```bash
-gradle :app:assembleDebug
+bash scripts/download-libv2ray.sh
+# or:
+curl -fL -o app/libs/libv2ray.aar \
+  https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.7.28/libv2ray.aar
 ```
 
-API استفاده‌شده در اپ:
-
-- `Libv2ray.InitCoreEnv(path, key)`
-- `Libv2ray.NewCoreController(CoreCallbackHandler)`
-- `CoreController.StartLoop(configJson, tunFd)`
-- `CoreController.StopLoop()`
+Source: [2dust/AndroidLibXrayLite releases](https://github.com/2dust/AndroidLibXrayLite/releases)

@@ -2,30 +2,38 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Primary & Accent Colors for IFIX VPN
-val CyanPrimary = Color(0xFF00F5D4)
-val CyanSecondary = Color(0xFF06B6D4)
-val CyanGlow = Color(0x6600F5D4)
+/** IFIX brand – deep indigo + electric violet (original palette, not copied from any third-party app). */
+val IfixAccent = Color(0xFF7C5CFF)
+val IfixAccentSoft = Color(0xFF9B8AFF)
+val IfixAccentGlow = Color(0x557C5CFF)
+val IfixMint = Color(0xFF2EE6A6)
 
-// Background & Surface Dark Navy Palette
-val DarkNavyBackground = Color(0xFF0B1120)
-val DarkNavySurface = Color(0xFF0F172A)
-val DarkNavyCard = Color(0xFF1E293B)
-val DarkNavyBorder = Color(0xFF334155)
+val IfixBg = Color(0xFF0A0B12)
+val IfixSurface = Color(0xFF12141F)
+val IfixCard = Color(0xFF1A1D2B)
+val IfixBorder = Color(0xFF2A2E3F)
 
-// Status & Indicators
-val VpnConnectedGreen = Color(0xFF10B981)
-val VpnConnectingYellow = Color(0xFFF59E0B)
-val VpnDisconnectedRed = Color(0xFFEF4444)
+val StatusOn = Color(0xFF2EE6A6)
+val StatusWait = Color(0xFFFFB020)
+val StatusOff = Color(0xFFFF5C6A)
 
-// Light Theme Colors
-val LightBackground = Color(0xFFF8FAFC)
+// Backward-compatible aliases used by older screens during transition
+val CyanPrimary = IfixAccent
+val CyanSecondary = IfixAccentSoft
+val CyanGlow = IfixAccentGlow
+val DarkNavyBackground = IfixBg
+val DarkNavySurface = IfixSurface
+val DarkNavyCard = IfixCard
+val DarkNavyBorder = IfixBorder
+val VpnConnectedGreen = StatusOn
+val VpnConnectingYellow = StatusWait
+val VpnDisconnectedRed = StatusOff
+
+val LightBackground = Color(0xFFF4F5F9)
 val LightSurface = Color(0xFFFFFFFF)
-val LightCard = Color(0xFFF1F5F9)
-val LightBorder = Color(0xFFE2E8F0)
-val DarkTextPrimary = Color(0xFF0F172A)
-val DarkTextSecondary = Color(0xFF64748B)
-
-val LightTextPrimary = Color(0xFFF8FAFC)
-val LightTextSecondary = Color(0xFF94A3B8)
-
+val LightCard = Color(0xFFEEF0F6)
+val LightBorder = Color(0xFFD8DCE8)
+val DarkTextPrimary = Color(0xFF12141F)
+val DarkTextSecondary = Color(0xFF5C6378)
+val LightTextPrimary = Color(0xFFF4F5F9)
+val LightTextSecondary = Color(0xFF9AA1B5)

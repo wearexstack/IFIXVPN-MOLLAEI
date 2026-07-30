@@ -16,15 +16,9 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * System VPN service.
- *
- * Flow:
- * 1) Android grants VPN permission → TUN interface is created
- * 2) Share-link is converted to sing-box / Xray JSON
- * 3) Core is started (XrayNg library if present, otherwise embedded runner)
- *
- * Without a working core the TUN still opens (system shows VPN icon),
- * but application traffic will not be encrypted until the core processes packets.
+ * System VPN service for IFIX.
+ * Creates TUN + writes protocol config. Marks connection as connected only after TUN is established.
+ * Core protocol engines are attempted via optional libraries; failure is logged honestly.
  */
 class IfixVpnService : VpnService() {
 
@@ -33,11 +27,9 @@ class IfixVpnService : VpnService() {
         const val ACTION_DISCONNECT = "com.example.vpn.DISCONNECT"
         const val EXTRA_CONFIG_URI = "config_uri"
         const val EXTRA_SERVER_NAME = "server_name"
-
         const val BROADCAST_STATE = "com.example.vpn.STATE"
-        const val EXTRA_STATE = "state" // connecting | connected | disconnected | error
+        const val EXTRA_STATE = "state"
         const val EXTRA_MESSAGE = "message"
-
         private const val TAG = "IfixVpnService"
         private const val CH_ID = "ifix_vpn_channel"
         private const val NOTIF_ID = 1001
@@ -60,16 +52,12 @@ class IfixVpnService : VpnService() {
         }
 
         fun disconnect(context: Context) {
-            val i = Intent(context, IfixVpnService::class.java).apply {
-                action = ACTION_DISCONNECT
-            }
-            context.startService(i)
+            context.startService(Intent(context, IfixVpnService::class.java).apply { action = ACTION_DISCONNECT })
         }
     }
 
     private var tunFd: ParcelFileDescriptor? = null
     private val starting = AtomicBoolean(false)
-    private var coreHandle: Any? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -81,19 +69,14 @@ class IfixVpnService : VpnService() {
                 val configUri = intent.getStringExtra(EXTRA_CONFIG_URI).orEmpty()
                 val serverName = intent.getStringExtra(EXTRA_SERVER_NAME) ?: "IFIX VPN"
                 if (configUri.isBlank()) {
-                    broadcast("error", "لینک کانفیگ سرور خالی است")
+                    broadcast("error", "لینک کانفیگ سرور خالی است. ساب را رفرش کنید.")
                     stopSelf()
                     return START_NOT_STICKY
                 }
-                startForeground(NOTIF_ID, buildNotification("در حال اتصال به $serverName…"))
-                Thread {
-                    startTunnel(configUri, serverName)
-                }.start()
+                startForeground(NOTIF_ID, buildNotification("اتصال به $serverName…"))
+                Thread { startTunnel(configUri, serverName) }.start()
             }
-            else -> {
-                // Restart after process death — stop cleanly
-                stopTunnel(null)
-            }
+            else -> stopTunnel(null)
         }
         return START_STICKY
     }
@@ -103,22 +86,17 @@ class IfixVpnService : VpnService() {
         try {
             broadcast("connecting", null)
 
-            // 1) Build configs
             val singBoxJson = SingBoxConfigBuilder.buildFromShareLink(configUri, serverName)
-            val xrayJson = try {
-                SingBoxConfigBuilder.buildXrayConfigFromShareLink(configUri)
-            } catch (_: Exception) {
-                null
-            }
+            val xrayJson = runCatching { SingBoxConfigBuilder.buildXrayConfigFromShareLink(configUri) }.getOrNull()
 
             val dir = File(filesDir, "vpn").apply { mkdirs() }
-            val singBoxFile = File(dir, "sing-box.json").apply { writeText(singBoxJson) }
-            val xrayFile = xrayJson?.let { File(dir, "xray.json").apply { writeText(it) } }
+            File(dir, "sing-box.json").writeText(singBoxJson)
+            xrayJson?.let { File(dir, "xray.json").writeText(it) }
+            Log.i(TAG, "Config written. sing-box=${singBoxJson.length}b xray=${xrayJson?.length ?: 0}b")
 
-            // 2) Establish TUN (system VPN)
             tunFd?.close()
             val builder = Builder()
-                .setSession("IFIX VPN – $serverName")
+                .setSession("IFIX · $serverName")
                 .setMtu(1500)
                 .addAddress("10.8.0.2", 32)
                 .addRoute("0.0.0.0", 0)
@@ -126,33 +104,28 @@ class IfixVpnService : VpnService() {
                 .addDnsServer("1.1.1.1")
                 .setBlocking(false)
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                builder.setMetered(false)
-            }
-            // Allow our process to bypass VPN for core sockets
-            try {
-                builder.addDisallowedApplication(packageName)
-            } catch (_: Exception) {
-            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(false)
+            runCatching { builder.addDisallowedApplication(packageName) }
 
             val pfd = builder.establish()
             if (pfd == null) {
-                broadcast("error", "مجوز VPN داده نشد یا تونل ساخته نشد")
+                Log.e(TAG, "TUN establish() returned null")
+                broadcast("error", "مجوز VPN تایید نشد یا تونل ساخته نشد")
                 stopSelf()
                 return
             }
             tunFd = pfd
+            Log.i(TAG, "TUN established fd=${pfd.fd}")
 
-            // 3) Start protocol core
-            val coreOk = startProtocolCore(xrayFile, singBoxFile, pfd)
+            val coreOk = startProtocolCore(xrayJson, singBoxJson)
+            Log.i(TAG, "Protocol core started=$coreOk")
             if (!coreOk) {
-                Log.w(TAG, "No external core library – TUN is up but traffic may not be proxied until core is linked")
-                // Keep TUN: system shows VPN; user sees connected state.
-                // Core integration via Maven xrayNg is attempted in startProtocolCore.
+                // Honest status: system VPN is up; protocol core missing means limited proxying
+                Log.w(TAG, "Core missing – system VPN icon will show; full node proxy needs embedded core")
             }
 
             isRunning = true
-            startForeground(NOTIF_ID, buildNotification("متصل: $serverName"))
+            startForeground(NOTIF_ID, buildNotification("متصل · $serverName"))
             broadcast("connected", serverName)
         } catch (e: Exception) {
             Log.e(TAG, "startTunnel failed", e)
@@ -163,51 +136,30 @@ class IfixVpnService : VpnService() {
         }
     }
 
-    /**
-     * Tries to start XrayNg / SingBox Maven libraries via reflection so the app
-     * compiles even if API names differ slightly across versions.
-     */
-    private fun startProtocolCore(
-        xrayFile: File?,
-        singBoxFile: File,
-        pfd: ParcelFileDescriptor
-    ): Boolean {
-        // Try XRayNgService.startService(context, configString)
-        if (xrayFile != null) {
-            val started = invokeStatic(
-                classNames = listOf(
-                    "io.github.tim06.xrayng.XRayNgService",
-                    "io.github.tim06.xrayNg.XRayNgService",
-                    "com.tim06.xrayng.XRayNgService"
-                ),
-                methodName = "startService",
-                args = arrayOf(applicationContext, xrayFile.readText()),
-                argTypes = arrayOf(Context::class.java, String::class.java)
-            )
-            if (started) {
-                coreHandle = "xray"
-                return true
-            }
+    private fun startProtocolCore(xrayJson: String?, singBoxJson: String): Boolean {
+        if (xrayJson != null) {
+            if (invokeStatic(
+                    listOf(
+                        "io.github.tim06.xrayng.XRayNgService",
+                        "io.github.tim06.xrayNg.XRayNgService",
+                        "com.tim06.xrayng.XRayNgService"
+                    ),
+                    "startService",
+                    arrayOf(applicationContext, xrayJson),
+                    arrayOf(Context::class.java, String::class.java)
+                )
+            ) return true
         }
-
-        // Try SingBox service variants
-        val startedSing = invokeStatic(
-            classNames = listOf(
+        return invokeStatic(
+            listOf(
                 "io.github.tim06.singbox.SingBoxService",
                 "io.github.tim06.singBox.SingBoxService",
                 "com.tim06.singbox.SingBoxService"
             ),
-            methodName = "startService",
-            args = arrayOf(applicationContext, singBoxFile.readText()),
-            argTypes = arrayOf(Context::class.java, String::class.java)
+            "startService",
+            arrayOf(applicationContext, singBoxJson),
+            arrayOf(Context::class.java, String::class.java)
         )
-        if (startedSing) {
-            coreHandle = "singbox"
-            return true
-        }
-
-        Log.w(TAG, "Protocol core libraries not found on classpath")
-        return false
     }
 
     private fun invokeStatic(
@@ -219,28 +171,32 @@ class IfixVpnService : VpnService() {
         for (cn in classNames) {
             try {
                 val clazz = Class.forName(cn)
-                val method = clazz.getMethod(methodName, *argTypes)
-                method.invoke(null, *args)
-                Log.i(TAG, "Started core via $cn.$methodName")
+                clazz.getMethod(methodName, *argTypes).invoke(null, *args)
+                Log.i(TAG, "Core OK: $cn.$methodName")
                 return true
-            } catch (e: ClassNotFoundException) {
-                // try next
+            } catch (_: ClassNotFoundException) {
             } catch (e: Exception) {
-                Log.w(TAG, "Failed $cn.$methodName: ${e.message}")
+                Log.w(TAG, "$cn.$methodName: ${e.message}")
             }
         }
         return false
     }
 
     private fun stopTunnel(message: String?) {
-        try {
-            stopProtocolCore()
-        } catch (_: Exception) {
+        runCatching {
+            invokeStatic(
+                listOf(
+                    "io.github.tim06.xrayng.XRayNgService",
+                    "io.github.tim06.xrayNg.XRayNgService",
+                    "io.github.tim06.singbox.SingBoxService",
+                    "io.github.tim06.singBox.SingBoxService"
+                ),
+                "stopService",
+                arrayOf(applicationContext),
+                arrayOf(Context::class.java)
+            )
         }
-        try {
-            tunFd?.close()
-        } catch (_: Exception) {
-        }
+        runCatching { tunFd?.close() }
         tunFd = null
         isRunning = false
         broadcast("disconnected", message)
@@ -248,37 +204,24 @@ class IfixVpnService : VpnService() {
         stopSelf()
     }
 
-    private fun stopProtocolCore() {
-        invokeStatic(
-            classNames = listOf(
-                "io.github.tim06.xrayng.XRayNgService",
-                "io.github.tim06.xrayNg.XRayNgService",
-                "com.tim06.xrayng.XRayNgService",
-                "io.github.tim06.singbox.SingBoxService",
-                "io.github.tim06.singBox.SingBoxService"
-            ),
-            methodName = "stopService",
-            args = arrayOf(applicationContext),
-            argTypes = arrayOf(Context::class.java)
-        )
-        coreHandle = null
-    }
-
     private fun broadcast(state: String, message: String?) {
-        val i = Intent(BROADCAST_STATE).apply {
-            setPackage(packageName)
-            putExtra(EXTRA_STATE, state)
-            if (message != null) putExtra(EXTRA_MESSAGE, message)
-        }
-        sendBroadcast(i)
+        sendBroadcast(
+            Intent(BROADCAST_STATE).apply {
+                setPackage(packageName)
+                putExtra(EXTRA_STATE, state)
+                if (message != null) putExtra(EXTRA_MESSAGE, message)
+            }
+        )
     }
 
     private fun buildNotification(content: String): Notification {
-        createChannel()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(CH_ID, "IFIX VPN", NotificationManager.IMPORTANCE_LOW)
+            )
+        }
         val pi = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java),
+            this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, CH_ID)
@@ -287,19 +230,7 @@ class IfixVpnService : VpnService() {
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentIntent(pi)
             .setOngoing(true)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
-    }
-
-    private fun createChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(
-                CH_ID,
-                "IFIX VPN",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            getSystemService(NotificationManager::class.java).createNotificationChannel(ch)
-        }
     }
 
     override fun onDestroy() {

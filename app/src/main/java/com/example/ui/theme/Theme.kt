@@ -7,29 +7,29 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-private val DarkColorScheme = darkColorScheme(
-    primary = CyanPrimary,
-    onPrimary = DarkNavyBackground,
-    primaryContainer = CyanSecondary,
+private val DarkScheme = darkColorScheme(
+    primary = IfixAccent,
+    onPrimary = Color.White,
+    primaryContainer = IfixAccentSoft,
     onPrimaryContainer = Color.White,
-    secondary = CyanSecondary,
-    onSecondary = Color.White,
-    background = DarkNavyBackground,
+    secondary = IfixMint,
+    onSecondary = IfixBg,
+    background = IfixBg,
     onBackground = LightTextPrimary,
-    surface = DarkNavySurface,
+    surface = IfixSurface,
     onSurface = LightTextPrimary,
-    surfaceVariant = DarkNavyCard,
+    surfaceVariant = IfixCard,
     onSurfaceVariant = LightTextSecondary,
-    outline = DarkNavyBorder,
-    error = VpnDisconnectedRed
+    outline = IfixBorder,
+    error = StatusOff
 )
 
-private val LightColorScheme = lightColorScheme(
-    primary = CyanSecondary,
+private val LightScheme = lightColorScheme(
+    primary = IfixAccent,
     onPrimary = Color.White,
-    primaryContainer = CyanPrimary,
-    onPrimaryContainer = DarkNavyBackground,
-    secondary = DarkNavySurface,
+    primaryContainer = IfixAccentSoft,
+    onPrimaryContainer = IfixBg,
+    secondary = IfixMint,
     onSecondary = Color.White,
     background = LightBackground,
     onBackground = DarkTextPrimary,
@@ -38,7 +38,7 @@ private val LightColorScheme = lightColorScheme(
     surfaceVariant = LightCard,
     onSurfaceVariant = DarkTextSecondary,
     outline = LightBorder,
-    error = VpnDisconnectedRed
+    error = StatusOff
 )
 
 @Composable
@@ -46,16 +46,13 @@ fun IfixVpnTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
-
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = if (darkTheme) DarkScheme else LightScheme,
         typography = Typography,
         content = content
     )
 }
 
-// Retain alias for backward compatibility
 @Composable
 fun MyApplicationTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -64,4 +61,3 @@ fun MyApplicationTheme(
 ) {
     IfixVpnTheme(darkTheme = darkTheme, content = content)
 }
-

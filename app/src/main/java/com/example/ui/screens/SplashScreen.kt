@@ -45,9 +45,11 @@ import kotlinx.coroutines.delay
 @Composable
 fun SplashScreen(
     isLicenseActive: Boolean,
+    licenseReady: Boolean = true,
     onSplashFinished: (destination: String) -> Unit
 ) {
     var startAnimation by remember { mutableStateOf(false) }
+    var navigated by remember { mutableStateOf(false) }
 
     val scaleAnimation by animateFloatAsState(
         targetValue = if (startAnimation) 1f else 0.4f,
@@ -63,7 +65,13 @@ fun SplashScreen(
 
     LaunchedEffect(Unit) {
         startAnimation = true
-        delay(2200)
+    }
+
+    // Wait until Room license is loaded, then route once
+    LaunchedEffect(licenseReady, isLicenseActive) {
+        if (!licenseReady || navigated) return@LaunchedEffect
+        delay(900)
+        navigated = true
         if (isLicenseActive) {
             onSplashFinished("home")
         } else {
@@ -128,7 +136,7 @@ fun SplashScreen(
                     .padding(horizontal = 16.dp, vertical = 6.dp)
             ) {
                 Text(
-                    text = "نسخه تجاری VIP",
+                    text = if (!licenseReady) "در حال بارگذاری…" else "نسخه تجاری VIP",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant

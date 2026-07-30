@@ -24,6 +24,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -31,6 +32,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,16 +48,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.VpnDisconnectedRed
+import kotlinx.coroutines.delay
 
 @Composable
 fun LicenseActivationScreen(
     licenseError: String?,
     licenseSuccessMsg: String?,
+    isActivating: Boolean = false,
     onActivateKey: (String) -> Unit,
     onNavigateHome: () -> Unit,
     onClearMessages: () -> Unit
 ) {
     var keyInput by remember { mutableStateOf("") }
+
+    // After success message, auto-enter home (no extra tap required)
+    LaunchedEffect(licenseSuccessMsg) {
+        if (licenseSuccessMsg != null) {
+            delay(600)
+            onNavigateHome()
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -99,7 +111,7 @@ fun LicenseActivationScreen(
                 )
 
                 Text(
-                    text = "کلید لایسنس معتبر IFIX VPN را وارد کنید تا سرورهای تجاری فعال شوند.",
+                    text = "کلید لایسنس معتبر IFIX VPN را وارد کنید.\nبعد از یک‌بار فعال‌سازی، تا انقضا دوباره لازم نیست.",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
@@ -180,6 +192,7 @@ fun LicenseActivationScreen(
                         focusedLabelColor = CyanPrimary
                     ),
                     singleLine = true,
+                    enabled = !isActivating,
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("license_key_input")
@@ -188,9 +201,8 @@ fun LicenseActivationScreen(
                 Spacer(modifier = Modifier.height(20.dp))
 
                 Button(
-                    onClick = {
-                        onActivateKey(keyInput)
-                    },
+                    onClick = { onActivateKey(keyInput.trim()) },
+                    enabled = !isActivating && keyInput.isNotBlank(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = CyanPrimary,
                         contentColor = Color(0xFF0F172A)
@@ -201,14 +213,23 @@ fun LicenseActivationScreen(
                         .height(52.dp)
                         .testTag("activate_license_button")
                 ) {
-                    Text(
-                        text = "فعال‌سازی لایسنس",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    )
+                    if (isActivating) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                            color = Color(0xFF0F172A)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("در حال بررسی…", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    } else {
+                        Text(
+                            text = "فعال‌سازی لایسنس",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    }
                 }
 
-                // Navigate home only after successful activation message appears
                 if (licenseSuccessMsg != null) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(

@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val isDarkMode by viewModel.isDarkMode.collectAsState()
             val activeLicense by viewModel.activeLicense.collectAsState()
+            val licenseReady by viewModel.licenseReady.collectAsState()
             val connectionStatus by viewModel.connectionStatus.collectAsState()
             val selectedServer by viewModel.selectedServer.collectAsState()
             val filteredServers by viewModel.filteredServers.collectAsState()
@@ -54,6 +55,7 @@ class MainActivity : ComponentActivity() {
             val selectedProtocolFilter by viewModel.selectedProtocolFilter.collectAsState()
             val licenseError by viewModel.licenseError.collectAsState()
             val licenseSuccessMsg by viewModel.licenseSuccessMsg.collectAsState()
+            val isActivatingLicense by viewModel.isActivatingLicense.collectAsState()
             val isUpdateDialogVisible by viewModel.isUpdateDialogVisible.collectAsState()
             val isRefreshingSub by viewModel.isRefreshingSub.collectAsState()
             val vpnPermissionIntent by viewModel.vpnPermissionIntent.collectAsState()
@@ -62,17 +64,10 @@ class MainActivity : ComponentActivity() {
                 vpnPermissionIntent?.let { vpnPermissionLauncher.launch(it) }
             }
 
-            // Surface connection / license errors as Toast on every screen
+            // Only toast errors (not success) so activation can still drive navigation
             LaunchedEffect(licenseError) {
                 licenseError?.let {
                     Toast.makeText(this@MainActivity, it, Toast.LENGTH_LONG).show()
-                    viewModel.clearMessages()
-                }
-            }
-            LaunchedEffect(licenseSuccessMsg) {
-                licenseSuccessMsg?.let {
-                    Toast.makeText(this@MainActivity, it, Toast.LENGTH_SHORT).show()
-                    viewModel.clearMessages()
                 }
             }
 
@@ -84,6 +79,7 @@ class MainActivity : ComponentActivity() {
                         composable("splash") {
                             SplashScreen(
                                 isLicenseActive = activeLicense?.status == "ACTIVE",
+                                licenseReady = licenseReady,
                                 onSplashFinished = { target ->
                                     navController.navigate(target) {
                                         popUpTo("splash") { inclusive = true }
@@ -93,9 +89,24 @@ class MainActivity : ComponentActivity() {
                         }
 
                         composable("license") {
+                            // Auto-enter home when license becomes ACTIVE (Room + activation)
+                            LaunchedEffect(activeLicense?.status) {
+                                if (activeLicense?.status == "ACTIVE") {
+                                    Toast.makeText(
+                                        this@MainActivity,
+                                        "لایسنس فعال است – ورود به برنامه",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    navController.navigate("home") {
+                                        popUpTo("license") { inclusive = true }
+                                    }
+                                }
+                            }
+
                             LicenseActivationScreen(
-                                licenseError = null,
-                                licenseSuccessMsg = null,
+                                licenseError = licenseError,
+                                licenseSuccessMsg = licenseSuccessMsg,
+                                isActivating = isActivatingLicense,
                                 onActivateKey = { viewModel.activateLicense(it) },
                                 onNavigateHome = {
                                     navController.navigate("home") {

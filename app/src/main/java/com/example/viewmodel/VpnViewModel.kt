@@ -77,6 +77,10 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val _isActivatingLicense = MutableStateFlow(false)
     val isActivatingLicense: StateFlow<Boolean> = _isActivatingLicense.asStateFlow()
 
+    /** True after first Room + revalidate pass — splash waits for this. */
+    private val _licenseReady = MutableStateFlow(false)
+    val licenseReady: StateFlow<Boolean> = _licenseReady.asStateFlow()
+
     private val _isRefreshingSub = MutableStateFlow(false)
     val isRefreshingSub: StateFlow<Boolean> = _isRefreshingSub.asStateFlow()
 
@@ -84,7 +88,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     val vpnPermissionIntent: StateFlow<Intent?> = _vpnPermissionIntent.asStateFlow()
 
     val activeLicense: StateFlow<LicenseEntity?> = repository.activeLicense
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val allSubscriptions: StateFlow<List<SubscriptionEntity>> = repository.allSubscriptions
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -95,7 +99,6 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         _selectedProtocolFilter
     ) { serverList, query, protocol ->
         if (_selectedServer.value == null && serverList.isNotEmpty()) {
-            // Prefer first non-maintenance with config
             _selectedServer.value = serverList.firstOrNull {
                 it.configRawUrl.isNotBlank() && it.status != "MAINTENANCE"
             } ?: serverList.first()
@@ -159,8 +162,13 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
-            repository.ensureInitialData()
-            repository.revalidateLicense()
+            try {
+                repository.ensureInitialData()
+                // Soft revalidate: keep local ACTIVE license if offline / API down
+                repository.revalidateLicense()
+            } finally {
+                _licenseReady.value = true
+            }
         }
         startAutoRefresh()
 
@@ -298,8 +306,10 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val result = repository.activateLicense(key)
             _isActivatingLicense.value = false
-            result.onSuccess {
-                _licenseSuccessMsg.value = "✅ لایسنس با موفقیت فعال شد!\n${it.planType}"
+            result.onSuccess { entity ->
+                _licenseSuccessMsg.value =
+                    "✅ لایسنس فعال شد\n${entity.planType}\nورود خودکار…"
+                // activeLicense Flow from Room will also flip to ACTIVE → MainActivity navigates
             }.onFailure {
                 _licenseError.value = it.message ?: "فعال‌سازی ناموفق بود."
             }

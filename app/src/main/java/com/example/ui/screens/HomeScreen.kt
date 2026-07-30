@@ -54,6 +54,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -68,10 +69,6 @@ import com.example.ui.theme.StatusOff
 import com.example.ui.theme.StatusOn
 import com.example.ui.theme.StatusWait
 
-/**
- * IFIX home – original layout focused on one-tap connect + server pick + live stats.
- * Inspired only by general VPN UX patterns (connect button, latency, server row), not any specific app UI.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -89,7 +86,7 @@ fun HomeScreen(
 ) {
     val scroll = rememberScrollState()
     val statusColor by animateColorAsState(
-        when (connectionStatus) {
+        targetValue = when (connectionStatus) {
             ConnectionStatus.CONNECTED -> StatusOn
             ConnectionStatus.CONNECTING, ConnectionStatus.DISCONNECTING -> StatusWait
             ConnectionStatus.DISCONNECTED -> StatusOff
@@ -98,9 +95,15 @@ fun HomeScreen(
     )
     val pulse = rememberInfiniteTransition(label = "p")
     val scale by pulse.animateFloat(
-        1f,
-        if (connectionStatus == ConnectionStatus.CONNECTED || connectionStatus == ConnectionStatus.CONNECTING) 1.08f else 1f,
-        infiniteRepeatable(tween(1100, easing = LinearEasing), RepeatMode.Reverse),
+        initialValue = 1f,
+        targetValue = if (
+            connectionStatus == ConnectionStatus.CONNECTED ||
+                connectionStatus == ConnectionStatus.CONNECTING
+        ) 1.08f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1100, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
         label = "s"
     )
 
@@ -110,19 +113,28 @@ fun HomeScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
-                            Modifier
+                            modifier = Modifier
                                 .size(36.dp)
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(IfixAccent),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Shield, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                            Icon(
+                                Icons.Default.Shield,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
-                        Spacer(Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
                         Column {
-                            Text("IFIX VPN", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                             Text(
-                                activeLicense?.planType ?: "بدون لایسنس",
+                                text = "IFIX VPN",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp
+                            )
+                            Text(
+                                text = activeLicense?.planType ?: "بدون لایسنس",
                                 fontSize = 11.sp,
                                 color = IfixAccent
                             )
@@ -140,14 +152,16 @@ fun HomeScreen(
                         Icon(Icons.Default.Settings, contentDescription = "تنظیمات")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
         modifier = Modifier.testTag("home_screen")
     ) { pad ->
         Column(
-            Modifier
+            modifier = Modifier
                 .fillMaxSize()
                 .padding(pad)
                 .padding(horizontal = 20.dp)
@@ -156,21 +170,37 @@ fun HomeScreen(
         ) {
             if (remoteConfig.announcementMessage.isNotBlank()) {
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    ),
                     shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
                 ) {
-                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Bolt, null, tint = IfixAccent, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(remoteConfig.announcementMessage, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Bolt,
+                            contentDescription = null,
+                            tint = IfixAccent,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = remoteConfig.announcementMessage,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
-                when (connectionStatus) {
+                text = when (connectionStatus) {
                     ConnectionStatus.CONNECTED -> "محافظت فعال"
                     ConnectionStatus.CONNECTING -> "در حال برقراری اتصال…"
                     ConnectionStatus.DISCONNECTING -> "در حال قطع…"
@@ -181,12 +211,16 @@ fun HomeScreen(
                 color = statusColor
             )
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-            // Big connect control
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(210.dp).testTag("connect_vpn_button")) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(210.dp)
+                    .testTag("connect_vpn_button")
+            ) {
                 Box(
-                    Modifier
+                    modifier = Modifier
                         .size(200.dp)
                         .scale(scale)
                         .clip(CircleShape)
@@ -198,14 +232,30 @@ fun HomeScreen(
                     modifier = Modifier
                         .size(148.dp)
                         .clip(CircleShape)
-                        .background(Brush.radialGradient(listOf(statusColor, statusColor.copy(0.85f))))
-                        .clickable { onToggleConnect() }
-                        .border(3.dp, Color.White.copy(0.25f), CircleShape)
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    statusColor,
+                                    statusColor.copy(alpha = 0.85f)
+                                )
+                            )
+                        )
+                        .clickable(onClick = onToggleConnect)
+                        .border(3.dp, Color.White.copy(alpha = 0.25f), CircleShape)
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.PowerSettingsNew, "اتصال", tint = Color.White, modifier = Modifier.size(52.dp))
+                        Icon(
+                            Icons.Default.PowerSettingsNew,
+                            contentDescription = "اتصال",
+                            tint = Color.White,
+                            modifier = Modifier.size(52.dp)
+                        )
                         Text(
-                            if (connectionStatus == ConnectionStatus.CONNECTED) "قطع کن" else "وصل شو",
+                            text = if (connectionStatus == ConnectionStatus.CONNECTED) {
+                                "قطع کن"
+                            } else {
+                                "وصل شو"
+                            },
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp
@@ -214,94 +264,132 @@ fun HomeScreen(
                 }
             }
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-            // Server picker row
             Card(
-                onClick = onNavigateServerList,
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
                 shape = RoundedCornerShape(18.dp),
-                modifier = Modifier.fillMaxWidth().testTag("select_server_tile")
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("select_server_tile")
+                    .clickable(onClick = onNavigateServerList)
             ) {
                 Row(
-                    Modifier.fillMaxWidth().padding(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(selectedServer?.flagEmoji ?: "🌐", fontSize = 28.sp)
-                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            text = selectedServer?.flagEmoji ?: "🌐",
+                            fontSize = 28.sp
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                selectedServer?.name ?: "انتخاب موقعیت سرور",
+                                text = selectedServer?.name ?: "انتخاب موقعیت سرور",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp
                             )
+                            val protocol = selectedServer?.protocol ?: "—"
+                            val latency = selectedServer?.latencyMs
+                            val subtitle = if (latency != null) {
+                                "$protocol · ${latency}ms"
+                            } else {
+                                protocol
+                            }
                             Text(
-                                buildString {
-                                    append(selectedServer?.protocol ?: "—")
-                                    selectedServer?.latencyMs?.let { append(" · ${it}ms") }
-                                },
+                                text = subtitle,
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
-                    Icon(Icons.Default.KeyboardArrowLeft, null, tint = IfixAccent)
+                    Icon(
+                        Icons.Default.KeyboardArrowLeft,
+                        contentDescription = null,
+                        tint = IfixAccent
+                    )
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MiniStat(Icons.Default.Timer, "مدت", formatDuration(vpnStats.durationSeconds), Modifier.weight(1f))
-                MiniStat(Icons.Default.Download, "دانلود", String.format("%.0f KB/s", vpnStats.downloadSpeedKbps), Modifier.weight(1f))
-                MiniStat(Icons.Default.Upload, "آپلود", String.format("%.0f KB/s", vpnStats.uploadSpeedKbps), Modifier.weight(1f))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                MiniStat(
+                    Icons.Default.Timer,
+                    "مدت",
+                    formatDurationHome(vpnStats.durationSeconds),
+                    Modifier.weight(1f)
+                )
+                MiniStat(
+                    Icons.Default.Download,
+                    "دانلود",
+                    String.format("%.0f KB/s", vpnStats.downloadSpeedKbps),
+                    Modifier.weight(1f)
+                )
+                MiniStat(
+                    Icons.Default.Upload,
+                    "آپلود",
+                    String.format("%.0f KB/s", vpnStats.uploadSpeedKbps),
+                    Modifier.weight(1f)
+                )
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
 
 @Composable
 private fun MiniStat(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     value: String,
     modifier: Modifier = Modifier
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
         shape = RoundedCornerShape(14.dp),
         modifier = modifier
     ) {
-        Column(Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, null, tint = IfixAccent, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text(label, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = IfixAccent,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = label,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-            Spacer(Modifier.height(6.dp))
-            Text(value, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(text = value, fontWeight = FontWeight.Bold, fontSize = 13.sp)
         }
     }
 }
 
-fun formatDuration(seconds: Long): String {
+private fun formatDurationHome(seconds: Long): String {
     val h = seconds / 3600
     val m = (seconds % 3600) / 60
     val s = seconds % 60
-    return if (h > 0) String.format("%02d:%02d:%02d", h, m, s) else String.format("%02d:%02d", m, s)
-}
-
-@Composable
-fun StatTile(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    value: String,
-    accentColor: Color,
-    modifier: Modifier = Modifier
-) {
-    MiniStat(icon, label, value, modifier)
+    return if (h > 0) {
+        String.format("%02d:%02d:%02d", h, m, s)
+    } else {
+        String.format("%02d:%02d", m, s)
+    }
 }

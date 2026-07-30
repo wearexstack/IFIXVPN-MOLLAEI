@@ -21,8 +21,8 @@ android {
     applicationId = "com.aistudio.ifixvpn.app"
     minSdk = 24
     targetSdk = 36
-    versionCode = 4
-    versionName = "1.3.0-xray"
+    versionCode = 5
+    versionName = "1.3.1"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -49,6 +49,8 @@ android {
       if (releaseSigning?.storeFile != null && releaseSigning.storeFile!!.exists()) {
         signingConfig = releaseSigning
       }
+    }
+    debug {
     }
   }
   compileOptions {
@@ -107,8 +109,12 @@ dependencies {
   implementation(libs.okhttp)
   implementation(libs.retrofit)
 
-  // Xray / libv2ray local AAR (optional)
-  implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
+  // Optional local AARs only (libv2ray.aar). Skip if folder has no .aar
+  val libDir = file("libs")
+  if (libDir.isDirectory) {
+    val aars = libDir.listFiles()?.filter { it.isFile && it.name.endsWith(".aar") }.orEmpty()
+    aars.forEach { implementation(files(it)) }
+  }
 
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)

@@ -1,0 +1,38 @@
+name: Build libbox AAR (optional)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "sing-box git tag"
+        required: false
+        default: "v1.13.14"
+
+jobs:
+  libbox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install NDK
+        run: sdkmanager --install "ndk;26.1.10909125" || true
+
+      - name: Build libbox
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+        run: |
+          chmod +x scripts/build-libbox.sh
+          ./scripts/build-libbox.sh "${{ github.event.inputs.tag || 'v1.13.14' }}" || echo "libbox build failed – see logs"
+
+      - name: Upload libbox.aar
+        uses: actions/upload-artifact@v4
+        with:
+          name: libbox-aar
+          path: app/libs/libbox.aar
+          if-no-files-found: warn

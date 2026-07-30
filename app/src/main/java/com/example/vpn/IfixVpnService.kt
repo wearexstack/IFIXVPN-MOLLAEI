@@ -16,9 +16,12 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * System VPN service for IFIX.
- * Creates TUN + writes protocol config. Marks connection as connected only after TUN is established.
- * Core protocol engines are attempted via optional libraries; failure is logged honestly.
+ * IFIX system VPN service backed by sing-box **libbox** when available.
+ *
+ * Flow:
+ * 1. Build sing-box JSON from share link
+ * 2. Start LibboxEngine (CommandServer + PlatformInterface.openTun)
+ * 3. Fallback: establish TUN only + log if libbox missing
  */
 class IfixVpnService : VpnService() {
 
@@ -52,11 +55,14 @@ class IfixVpnService : VpnService() {
         }
 
         fun disconnect(context: Context) {
-            context.startService(Intent(context, IfixVpnService::class.java).apply { action = ACTION_DISCONNECT })
+            context.startService(
+                Intent(context, IfixVpnService::class.java).apply { action = ACTION_DISCONNECT }
+            )
         }
     }
 
     private var tunFd: ParcelFileDescriptor? = null
+    private var engine: LibboxEngine? = null
     private val starting = AtomicBoolean(false)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -87,46 +93,42 @@ class IfixVpnService : VpnService() {
             broadcast("connecting", null)
 
             val singBoxJson = SingBoxConfigBuilder.buildFromShareLink(configUri, serverName)
-            val xrayJson = runCatching { SingBoxConfigBuilder.buildXrayConfigFromShareLink(configUri) }.getOrNull()
-
             val dir = File(filesDir, "vpn").apply { mkdirs() }
             File(dir, "sing-box.json").writeText(singBoxJson)
-            xrayJson?.let { File(dir, "xray.json").writeText(it) }
-            Log.i(TAG, "Config written. sing-box=${singBoxJson.length}b xray=${xrayJson?.length ?: 0}b")
+            Log.i(TAG, "sing-box config ${singBoxJson.length} bytes written")
 
-            tunFd?.close()
-            val builder = Builder()
-                .setSession("IFIX · $serverName")
-                .setMtu(1500)
-                .addAddress("10.8.0.2", 32)
-                .addRoute("0.0.0.0", 0)
-                .addDnsServer("8.8.8.8")
-                .addDnsServer("1.1.1.1")
-                .setBlocking(false)
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(false)
-            runCatching { builder.addDisallowedApplication(packageName) }
-
-            val pfd = builder.establish()
-            if (pfd == null) {
-                Log.e(TAG, "TUN establish() returned null")
-                broadcast("error", "مجوز VPN تایید نشد یا تونل ساخته نشد")
-                stopSelf()
-                return
+            engine?.stop()
+            engine = LibboxEngine(this) { pfd ->
+                tunFd = pfd
             }
-            tunFd = pfd
-            Log.i(TAG, "TUN established fd=${pfd.fd}")
 
-            val coreOk = startProtocolCore(xrayJson, singBoxJson)
-            Log.i(TAG, "Protocol core started=$coreOk")
-            if (!coreOk) {
-                // Honest status: system VPN is up; protocol core missing means limited proxying
-                Log.w(TAG, "Core missing – system VPN icon will show; full node proxy needs embedded core")
+            val libboxOk = if (LibboxEngine.isAvailable()) {
+                engine!!.start(applicationContext, singBoxJson)
+            } else {
+                Log.w(TAG, "libbox.aar missing – place under app/libs/ and rebuild")
+                false
+            }
+
+            if (!libboxOk) {
+                // Fallback TUN so permission flow still works; traffic will NOT be fully proxied
+                establishFallbackTun(serverName)
+                broadcast(
+                    "error",
+                    "هسته libbox یافت نشد. فایل app/libs/libbox.aar را بسازید (scripts/build-libbox.sh)."
+                )
+                // Keep service alive with fallback TUN only if established
+                if (tunFd == null) {
+                    stopSelf()
+                    return
+                }
             }
 
             isRunning = true
-            startForeground(NOTIF_ID, buildNotification("متصل · $serverName"))
-            broadcast("connected", serverName)
+            val note = if (libboxOk) "متصل · $serverName (sing-box)" else "تونل سیستم · بدون هسته"
+            startForeground(NOTIF_ID, buildNotification(note))
+            if (libboxOk) {
+                broadcast("connected", serverName)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "startTunnel failed", e)
             broadcast("error", e.message ?: "خطا در اتصال")
@@ -136,67 +138,37 @@ class IfixVpnService : VpnService() {
         }
     }
 
-    private fun startProtocolCore(xrayJson: String?, singBoxJson: String): Boolean {
-        if (xrayJson != null) {
-            if (invokeStatic(
-                    listOf(
-                        "io.github.tim06.xrayng.XRayNgService",
-                        "io.github.tim06.xrayNg.XRayNgService",
-                        "com.tim06.xrayng.XRayNgService"
-                    ),
-                    "startService",
-                    arrayOf(applicationContext, xrayJson),
-                    arrayOf(Context::class.java, String::class.java)
-                )
-            ) return true
+    private fun establishFallbackTun(serverName: String) {
+        try {
+            tunFd?.close()
+            val pfd = Builder()
+                .setSession("IFIX · $serverName")
+                .setMtu(1500)
+                .addAddress("10.8.0.2", 32)
+                .addRoute("0.0.0.0", 0)
+                .addDnsServer("8.8.8.8")
+                .setBlocking(false)
+                .apply {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) setMetered(false)
+                }
+                .establish()
+            tunFd = pfd
+            Log.i(TAG, "fallback TUN fd=${pfd?.fd}")
+        } catch (e: Exception) {
+            Log.e(TAG, "fallback TUN failed", e)
         }
-        return invokeStatic(
-            listOf(
-                "io.github.tim06.singbox.SingBoxService",
-                "io.github.tim06.singBox.SingBoxService",
-                "com.tim06.singbox.SingBoxService"
-            ),
-            "startService",
-            arrayOf(applicationContext, singBoxJson),
-            arrayOf(Context::class.java, String::class.java)
-        )
-    }
-
-    private fun invokeStatic(
-        classNames: List<String>,
-        methodName: String,
-        args: Array<Any?>,
-        argTypes: Array<Class<*>>
-    ): Boolean {
-        for (cn in classNames) {
-            try {
-                val clazz = Class.forName(cn)
-                clazz.getMethod(methodName, *argTypes).invoke(null, *args)
-                Log.i(TAG, "Core OK: $cn.$methodName")
-                return true
-            } catch (_: ClassNotFoundException) {
-            } catch (e: Exception) {
-                Log.w(TAG, "$cn.$methodName: ${e.message}")
-            }
-        }
-        return false
     }
 
     private fun stopTunnel(message: String?) {
-        runCatching {
-            invokeStatic(
-                listOf(
-                    "io.github.tim06.xrayng.XRayNgService",
-                    "io.github.tim06.xrayNg.XRayNgService",
-                    "io.github.tim06.singbox.SingBoxService",
-                    "io.github.tim06.singBox.SingBoxService"
-                ),
-                "stopService",
-                arrayOf(applicationContext),
-                arrayOf(Context::class.java)
-            )
+        try {
+            engine?.stop()
+        } catch (_: Exception) {
         }
-        runCatching { tunFd?.close() }
+        engine = null
+        try {
+            tunFd?.close()
+        } catch (_: Exception) {
+        }
         tunFd = null
         isRunning = false
         broadcast("disconnected", message)

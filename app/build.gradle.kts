@@ -21,8 +21,8 @@ android {
     applicationId = "com.aistudio.ifixvpn.app"
     minSdk = 24
     targetSdk = 36
-    versionCode = 2
-    versionName = "1.1.0"
+    versionCode = 3
+    versionName = "1.2.0-libbox"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -49,8 +49,6 @@ android {
       if (releaseSigning?.storeFile != null && releaseSigning.storeFile!!.exists()) {
         signingConfig = releaseSigning
       }
-    }
-    debug {
     }
   }
   compileOptions {
@@ -109,9 +107,8 @@ dependencies {
   implementation(libs.okhttp)
   implementation(libs.retrofit)
 
-  // VPN protocol cores (Xray / sing-box wrappers)
-  implementation("io.github.tim06:xrayNg:1.1.9")
-  implementation("io.github.tim06:singBox:1.1.9")
+  // sing-box libbox (optional local AAR – see app/libs/README.md)
+  implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
 
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)

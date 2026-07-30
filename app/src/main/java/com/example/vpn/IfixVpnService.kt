@@ -16,12 +16,11 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * IFIX system VPN service backed by sing-box **libbox** when available.
+ * IFIX VPN service – **Xray-first** core.
  *
- * Flow:
- * 1. Build sing-box JSON from share link
- * 2. Start LibboxEngine (CommandServer + PlatformInterface.openTun)
- * 3. Fallback: establish TUN only + log if libbox missing
+ * 1) Build Xray JSON from share link
+ * 2) Start [XrayEngine] (libv2ray / xray binary)
+ * 3) Establish system TUN (app excluded so core can reach the node)
  */
 class IfixVpnService : VpnService() {
 
@@ -62,7 +61,7 @@ class IfixVpnService : VpnService() {
     }
 
     private var tunFd: ParcelFileDescriptor? = null
-    private var engine: LibboxEngine? = null
+    private var xray: XrayEngine? = null
     private val starting = AtomicBoolean(false)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -79,7 +78,7 @@ class IfixVpnService : VpnService() {
                     stopSelf()
                     return START_NOT_STICKY
                 }
-                startForeground(NOTIF_ID, buildNotification("اتصال به $serverName…"))
+                startForeground(NOTIF_ID, buildNotification("اتصال Xray به $serverName…"))
                 Thread { startTunnel(configUri, serverName) }.start()
             }
             else -> stopTunnel(null)
@@ -92,79 +91,60 @@ class IfixVpnService : VpnService() {
         try {
             broadcast("connecting", null)
 
-            val singBoxJson = SingBoxConfigBuilder.buildFromShareLink(configUri, serverName)
-            val dir = File(filesDir, "vpn").apply { mkdirs() }
-            File(dir, "sing-box.json").writeText(singBoxJson)
-            Log.i(TAG, "sing-box config ${singBoxJson.length} bytes written")
-
-            engine?.stop()
-            engine = LibboxEngine(this) { pfd ->
-                tunFd = pfd
+            // Prefer Xray JSON; hysteria2 is not native to Xray — reject with clear message
+            val uriLower = configUri.lowercase()
+            if (uriLower.startsWith("hysteria2://") || uriLower.startsWith("hy2://")) {
+                broadcast("error", "Hysteria2 با هسته Xray پشتیبانی نمی‌شود. از vless/trojan/vmess/ss استفاده کنید.")
+                stopSelf()
+                return
             }
 
-            val libboxOk = if (LibboxEngine.isAvailable()) {
-                engine!!.start(applicationContext, singBoxJson)
-            } else {
-                Log.w(TAG, "libbox.aar missing – place under app/libs/ and rebuild")
-                false
-            }
+            val xrayJson = SingBoxConfigBuilder.buildXrayConfigFromShareLink(configUri)
+            File(filesDir, "vpn").apply { mkdirs() }
+            File(filesDir, "vpn/xray.json").writeText(xrayJson)
+            Log.i(TAG, "Xray JSON ready (${xrayJson.length} bytes)")
 
-            if (!libboxOk) {
-                // Fallback TUN so permission flow still works; traffic will NOT be fully proxied
-                establishFallbackTun(serverName)
+            xray?.stop()
+            xray = XrayEngine(this)
+
+            val coreOk = xray!!.start(applicationContext, xrayJson)
+            if (!coreOk) {
                 broadcast(
                     "error",
-                    "هسته libbox یافت نشد. فایل app/libs/libbox.aar را بسازید (scripts/build-libbox.sh)."
+                    "هسته Xray یافت نشد. libv2ray AAR یا باینری xray را در app/libs قرار دهید (README)."
                 )
-                // Keep service alive with fallback TUN only if established
-                if (tunFd == null) {
-                    stopSelf()
-                    return
-                }
+                stopSelf()
+                return
+            }
+
+            // System TUN (app disallowed so Xray can dial outbound)
+            tunFd = xray!!.establishTun("IFIX · $serverName")
+            if (tunFd == null) {
+                broadcast("error", "تونل VPN ساخته نشد (مجوز؟)")
+                xray?.stop()
+                stopSelf()
+                return
             }
 
             isRunning = true
-            val note = if (libboxOk) "متصل · $serverName (sing-box)" else "تونل سیستم · بدون هسته"
-            startForeground(NOTIF_ID, buildNotification(note))
-            if (libboxOk) {
-                broadcast("connected", serverName)
-            }
+            startForeground(NOTIF_ID, buildNotification("متصل · $serverName (Xray)"))
+            broadcast("connected", serverName)
+            Log.i(TAG, "Xray tunnel up")
         } catch (e: Exception) {
             Log.e(TAG, "startTunnel failed", e)
-            broadcast("error", e.message ?: "خطا در اتصال")
+            broadcast("error", e.message ?: "خطا در اتصال Xray")
             stopTunnel(null)
         } finally {
             starting.set(false)
         }
     }
 
-    private fun establishFallbackTun(serverName: String) {
-        try {
-            tunFd?.close()
-            val pfd = Builder()
-                .setSession("IFIX · $serverName")
-                .setMtu(1500)
-                .addAddress("10.8.0.2", 32)
-                .addRoute("0.0.0.0", 0)
-                .addDnsServer("8.8.8.8")
-                .setBlocking(false)
-                .apply {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) setMetered(false)
-                }
-                .establish()
-            tunFd = pfd
-            Log.i(TAG, "fallback TUN fd=${pfd?.fd}")
-        } catch (e: Exception) {
-            Log.e(TAG, "fallback TUN failed", e)
-        }
-    }
-
     private fun stopTunnel(message: String?) {
         try {
-            engine?.stop()
+            xray?.stop()
         } catch (_: Exception) {
         }
-        engine = null
+        xray = null
         try {
             tunFd?.close()
         } catch (_: Exception) {

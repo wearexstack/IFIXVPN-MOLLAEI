@@ -21,8 +21,8 @@ android {
     applicationId = "com.aistudio.ifixvpn.app"
     minSdk = 24
     targetSdk = 36
-    versionCode = 3
-    versionName = "1.2.0-libbox"
+    versionCode = 4
+    versionName = "1.3.0-xray"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -107,7 +107,7 @@ dependencies {
   implementation(libs.okhttp)
   implementation(libs.retrofit)
 
-  // sing-box libbox (optional local AAR – see app/libs/README.md)
+  // Xray / libv2ray local AAR (optional)
   implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
 
   testImplementation(libs.androidx.compose.ui.test.junit4)

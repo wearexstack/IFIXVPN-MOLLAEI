@@ -1,27 +1,44 @@
-# libbox.aar (sing-box for Android)
+# هسته Xray برای IFIX VPN
 
-IFIX VPN needs the official **libbox** Android library from [SagerNet/sing-box](https://github.com/SagerNet/sing-box).
+مسیر پیش‌فرض اپ **Xray-core** است (نه sing-box).
 
-## Quick build (Linux / macOS / CI)
+## گزینه ۱ — libv2ray (AndroidLibXrayLite)
+
+1. از پروژه [AndroidLibXrayLite](https://github.com/2dust/AndroidLibXrayLite) یا فورک سازگار، AAR بسازید.
+2. فایل را اینجا کپی کنید:
+
+```text
+app/libs/libv2ray.aar
+```
+
+3. پروژه را دوباره بیلد کنید. `build.gradle.kts` همه `*.aar` این پوشه را لود می‌کند.
+
+## گزینه ۲ — باینری xray
+
+باینری رسمی را برای ABI دستگاه در `jniLibs` بگذارید، مثلاً:
+
+```text
+app/src/main/jniLibs/arm64-v8a/libxray.so
+```
+
+`XrayEngine` مسیر `nativeLibraryDir` را برای `libxray.so` / `xray` چک می‌کند.
+
+## پروتکل‌های پشتیبانی‌شده در کانفیگ
+
+| لینک | Xray |
+|------|------|
+| vless:// | ✅ |
+| trojan:// | ✅ |
+| vmess:// | ✅ |
+| ss:// | ✅ |
+| hysteria2:// | ❌ (نیاز به sing-box) |
+
+## لاگ
 
 ```bash
-# from repo root
-./scripts/build-libbox.sh
-# produces: app/libs/libbox.aar
+adb logcat -s XrayEngine:D IfixVpnService:D
 ```
 
-Requirements: Go 1.22+, Android NDK, `ANDROID_HOME` / `ANDROID_NDK_HOME`.
+## نکته
 
-## Gradle
-
-`app/build.gradle.kts` loads any `*.aar` under this folder:
-
-```kotlin
-implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
-```
-
-Without the AAR the app still builds; connect will report that the core is missing.
-
-## License
-
-libbox / sing-box is GPL. Distribute source obligations if you ship a modified core.
+تونل سیستم (`VpnService`) ترافیک را می‌گیرد؛ برای مسیر کامل TUN→SOCKS→Xray در نسخه‌های بعدی می‌توان **tun2socks / hev-socks5-tunnel** اضافه کرد. با `addDisallowedApplication(packageName)` هسته Xray می‌تواند به نود وصل شود.

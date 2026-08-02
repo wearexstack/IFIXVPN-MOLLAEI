@@ -14,9 +14,6 @@ import com.example.MainActivity
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * VPN service – Xray (libv2ray) with real TUN fd via StartLoop(config, tunFd).
- */
 class IfixVpnService : VpnService() {
 
     companion object {
@@ -58,6 +55,12 @@ class IfixVpnService : VpnService() {
     private var xray: XrayEngine? = null
     private val starting = AtomicBoolean(false)
 
+    override fun onCreate() {
+        super.onCreate()
+        // Warm up native env early
+        XrayEngine.ensureEnv(applicationContext)
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_DISCONNECT -> {
@@ -73,7 +76,7 @@ class IfixVpnService : VpnService() {
                     return START_NOT_STICKY
                 }
                 startForeground(NOTIF_ID, buildNotification("اتصال به $serverName…"))
-                Thread { startTunnel(configUri, serverName) }.start()
+                Thread({ startTunnel(configUri, serverName) }, "ifix-xray-start").start()
             }
             else -> stopTunnel(null)
         }
@@ -87,7 +90,10 @@ class IfixVpnService : VpnService() {
 
             val lower = configUri.lowercase()
             if (lower.startsWith("hysteria2://") || lower.startsWith("hy2://")) {
-                broadcast("error", "Hysteria2 با Xray پشتیبانی نمی‌شود. سرور VLESS/Trojan/VMess انتخاب کنید.")
+                broadcast(
+                    "error",
+                    "Hysteria2 با Xray پشتیبانی نمی‌شود. سرور VLESS/Trojan/VMess انتخاب کنید."
+                )
                 stopSelf()
                 return
             }
@@ -95,22 +101,31 @@ class IfixVpnService : VpnService() {
             if (!XrayEngine.isAvailable()) {
                 broadcast(
                     "error",
-                    "کتابخانه Xray (libv2ray.aar) نصب نیست. فایل را در app/libs بگذارید و APK را دوباره بسازید."
+                    "کتابخانه Xray (libv2ray.aar) در این APK نیست. از بیلد Actions جدید استفاده کنید."
                 )
                 stopSelf()
                 return
             }
 
-            val xrayJson = XrayConfigBuilder.build(configUri)
-            File(filesDir, "vpn").apply { mkdirs() }
+            val xrayJson = try {
+                XrayConfigBuilder.build(configUri)
+            } catch (e: Exception) {
+                broadcast("error", "کانفیگ نامعتبر: ${e.message}")
+                stopSelf()
+                return
+            }
+
+            File(filesDir, "vpn").mkdirs()
             File(filesDir, "vpn/xray.json").writeText(xrayJson)
-            Log.i(TAG, "config ${xrayJson.length} bytes")
+            Log.i(TAG, "config ready ${xrayJson.length} bytes")
 
             xray?.stop()
             xray = XrayEngine(this)
             val ok = xray!!.start(applicationContext, xrayJson, "IFIX · $serverName")
             if (!ok) {
-                broadcast("error", "استارت هسته Xray ناموفق بود. لاگ XrayEngine را ببینید.")
+                val detail = xray?.lastError ?: "نامشخص"
+                Log.e(TAG, "core start failed: $detail")
+                broadcast("error", "هسته Xray: $detail")
                 stopSelf()
                 return
             }

@@ -6,7 +6,8 @@ import org.json.JSONObject
 import java.net.URLDecoder
 
 /**
- * Builds valid Xray-core JSON (vless/trojan/vmess/ss) with TUN inbound for libv2ray StartLoop(fd).
+ * Builds Xray JSON for Android TUN (xray.tun.fd).
+ * Avoids geoip/geosite so no .dat assets are required.
  */
 object XrayConfigBuilder {
 
@@ -21,59 +22,47 @@ object XrayConfigBuilder {
         }
 
         val root = JSONObject()
-        root.put("log", JSONObject().put("loglevel", "warning"))
-
-        // Stats for QueryStats
-        root.put("stats", JSONObject())
         root.put(
-            "policy",
-            JSONObject().put(
-                "system",
-                JSONObject()
-                    .put("statsOutboundUplink", true)
-                    .put("statsOutboundDownlink", true)
-            )
+            "log",
+            JSONObject()
+                .put("loglevel", "warning")
+                .put("access", "none")
         )
 
-        // TUN inbound – fd supplied by libv2ray via env xray.tun.fd
+        // TUN inbound – fd from env xray.tun.fd set by StartLoop
         val tunInbound = JSONObject()
             .put("tag", "tun-in")
             .put("protocol", "tun")
+            .put("port", 0)
             .put(
                 "settings",
                 JSONObject()
                     .put("mtu", 1500)
-                    .put("name", "ifix0")
             )
             .put(
                 "sniffing",
                 JSONObject()
                     .put("enabled", true)
                     .put("destOverride", JSONArray().put("http").put("tls").put("quic"))
-                    .put("routeOnly", true)
+                    .put("routeOnly", false)
             )
 
-        val socksInbound = JSONObject()
-            .put("tag", "socks-in")
-            .put("port", 10808)
-            .put("listen", "127.0.0.1")
-            .put("protocol", "socks")
-            .put("settings", JSONObject().put("udp", true).put("auth", "noauth"))
-            .put(
-                "sniffing",
-                JSONObject()
-                    .put("enabled", true)
-                    .put("destOverride", JSONArray().put("http").put("tls"))
-            )
+        root.put("inbounds", JSONArray().put(tunInbound))
 
-        root.put("inbounds", JSONArray().put(tunInbound).put(socksInbound))
         root.put(
             "outbounds",
             JSONArray()
                 .put(outbound)
-                .put(JSONObject().put("protocol", "freedom").put("tag", "direct"))
+                .put(
+                    JSONObject()
+                        .put("protocol", "freedom")
+                        .put("tag", "direct")
+                        .put("settings", JSONObject().put("domainStrategy", "UseIP"))
+                )
                 .put(JSONObject().put("protocol", "blackhole").put("tag", "block"))
         )
+
+        // No geoip:private – would require geoip.dat
         root.put(
             "routing",
             JSONObject()
@@ -84,12 +73,26 @@ object XrayConfigBuilder {
                         .put(
                             JSONObject()
                                 .put("type", "field")
-                                .put("ip", JSONArray().put("geoip:private"))
+                                .put(
+                                    "ip",
+                                    JSONArray()
+                                        .put("0.0.0.0/8")
+                                        .put("10.0.0.0/8")
+                                        .put("127.0.0.0/8")
+                                        .put("169.254.0.0/16")
+                                        .put("172.16.0.0/12")
+                                        .put("192.168.0.0/16")
+                                        .put("224.0.0.0/4")
+                                        .put("240.0.0.0/4")
+                                )
                                 .put("outboundTag", "direct")
                         )
                 )
         )
-        return root.toString(2)
+
+        root.put("dns", JSONObject().put("servers", JSONArray().put("8.8.8.8").put("1.1.1.1")))
+
+        return root.toString()
     }
 
     private fun vless(uri: String): JSONObject {
@@ -117,7 +120,7 @@ object XrayConfigBuilder {
                         .put("fingerprint", q["fp"] ?: "chrome")
                         .put("publicKey", q["pbk"] ?: "")
                         .put("shortId", q["sid"] ?: "")
-                        .put("spiderX", q["spx"] ?: "")
+                        .put("spiderX", q["spx"] ?: "/")
                 )
             }
             "tls" -> {
@@ -149,12 +152,19 @@ object XrayConfigBuilder {
                 if (headerType == "http") {
                     stream.put(
                         "tcpSettings",
-                        JSONObject().put(
-                            "header",
-                            JSONObject().put("type", "http")
-                        )
+                        JSONObject().put("header", JSONObject().put("type", "http"))
                     )
                 }
+            }
+            "xhttp", "splithttp" -> {
+                stream.put("network", "xhttp")
+                stream.put(
+                    "xhttpSettings",
+                    JSONObject()
+                        .put("path", q["path"] ?: "/")
+                        .put("host", q["host"] ?: sni)
+                        .put("mode", q["mode"] ?: "auto")
+                )
             }
         }
 
@@ -189,6 +199,7 @@ object XrayConfigBuilder {
                 JSONObject()
                     .put("serverName", sni)
                     .put("allowInsecure", q["allowInsecure"] == "1")
+                    .put("fingerprint", q["fp"] ?: "chrome")
             )
         if (network == "ws") {
             stream.put(
@@ -228,7 +239,12 @@ object XrayConfigBuilder {
         val stream = JSONObject().put("network", net)
         if (tls == "tls") {
             stream.put("security", "tls")
-            stream.put("tlsSettings", JSONObject().put("serverName", sni))
+            stream.put(
+                "tlsSettings",
+                JSONObject()
+                    .put("serverName", sni)
+                    .put("fingerprint", "chrome")
+            )
         } else {
             stream.put("security", "none")
         }
@@ -309,7 +325,12 @@ object XrayConfigBuilder {
             )
     }
 
-    private data class Parsed(val user: String, val host: String, val port: Int, val query: Map<String, String>)
+    private data class Parsed(
+        val user: String,
+        val host: String,
+        val port: Int,
+        val query: Map<String, String>
+    )
 
     private fun parse(uri: String): Parsed {
         val withoutScheme = uri.substringAfter("://")
